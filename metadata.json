@@ -1,0 +1,6 @@
+{
+  "name": "Oberá en Oferta",
+  "description": "Plataforma de comercio local para encontrar ofertas activas, promociones flash y cupones de descuento con código QR en la ciudad de Oberá, Misiones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

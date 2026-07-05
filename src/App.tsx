@@ -1,0 +1,473 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Sparkles, QrCode, Phone, CheckCircle, Info, Bookmark, ExternalLink, RefreshCw, Smartphone, Star } from 'lucide-react';
+
+import { Shop, Offer, Notification, TabType } from './types';
+import { INITIAL_SHOPS, INITIAL_OFFERS, INITIAL_NOTIFICATIONS } from './data';
+
+import Header from './components/Header';
+import BottomNav from './components/BottomNav';
+import HomeTab from './components/HomeTab';
+import CategoriesTab from './components/CategoriesTab';
+import MapView from './components/MapView';
+import MerchantDashboard from './components/MerchantDashboard';
+import MyProfileTab from './components/MyProfileTab';
+import CouponModal from './components/CouponModal';
+import OfferDetailModal from './components/OfferDetailModal';
+import LoginScreen from './components/LoginScreen';
+import AiChatbot from './components/AiChatbot';
+
+export default function App() {
+  // Tab control state
+  const [activeTab, setActiveTab] = useState<TabType>('home');
+
+  // Dark/Light Mode state
+  const [darkMode, setDarkMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('obera_ofertas_dark_mode');
+    return saved === 'true';
+  });
+
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+      document.body.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.body.classList.remove('dark');
+    }
+    localStorage.setItem('obera_ofertas_dark_mode', String(darkMode));
+  }, [darkMode]);
+
+  // User Authentication role state
+  const [userRole, setUserRole] = useState<'customer' | 'merchant' | null>(() => {
+    const saved = localStorage.getItem('obera_ofertas_user_role');
+    return (saved === 'customer' || saved === 'merchant') ? saved : null;
+  });
+
+  const [userEmail, setUserEmail] = useState<string>(() => {
+    return localStorage.getItem('obera_ofertas_user_email') || 'tizsedoff@gmail.com';
+  });
+
+  const handleLogin = (role: 'customer' | 'merchant', email?: string) => {
+    setUserRole(role);
+    localStorage.setItem('obera_ofertas_user_role', role);
+    
+    const resolvedEmail = email || (role === 'merchant' ? 'yerbamate@obera.com' : 'tizsedoff@gmail.com');
+    setUserEmail(resolvedEmail);
+    localStorage.setItem('obera_ofertas_user_email', resolvedEmail);
+
+    if (role === 'merchant') {
+      setActiveTab('myshop');
+    } else {
+      setActiveTab('home');
+    }
+  };
+
+  const handleLogout = () => {
+    setUserRole(null);
+    setUserEmail('tizsedoff@gmail.com');
+    localStorage.removeItem('obera_ofertas_user_role');
+    localStorage.removeItem('obera_ofertas_user_email');
+  };
+
+  // Persistence backed collections
+  const [shops, setShops] = useState<Shop[]>(() => {
+    const saved = localStorage.getItem('obera_ofertas_shops');
+    return saved ? JSON.parse(saved) : INITIAL_SHOPS;
+  });
+
+  const [offers, setOffers] = useState<Offer[]>(() => {
+    const saved = localStorage.getItem('obera_ofertas_offers');
+    return saved ? JSON.parse(saved) : INITIAL_OFFERS;
+  });
+
+  const [notifications, setNotifications] = useState<Notification[]>(() => {
+    const saved = localStorage.getItem('obera_ofertas_notifications');
+    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+  });
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Category state (shared between Home stories and Categories filter)
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  // Pop-up details states
+  const [selectedCouponOffer, setSelectedCouponOffer] = useState<Offer | null>(null);
+  const [selectedDetailOffer, setSelectedDetailOffer] = useState<Offer | null>(null);
+
+  // Success Claim toast
+  const [showToast, setShowToast] = useState<string | null>(null);
+
+  // Claimed coupons state
+  const [claimedCouponIds, setClaimedCouponIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('obera_ofertas_claimed_coupons');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Sync to localStorage on update
+  useEffect(() => {
+    localStorage.setItem('obera_ofertas_shops', JSON.stringify(shops));
+  }, [shops]);
+
+  useEffect(() => {
+    localStorage.setItem('obera_ofertas_offers', JSON.stringify(offers));
+  }, [offers]);
+
+  useEffect(() => {
+    localStorage.setItem('obera_ofertas_notifications', JSON.stringify(notifications));
+  }, [notifications]);
+
+  useEffect(() => {
+    localStorage.setItem('obera_ofertas_claimed_coupons', JSON.stringify(claimedCouponIds));
+  }, [claimedCouponIds]);
+
+  // Handle claims - updates both coupon counts and merchant analytics dynamically
+  const handleClaimCoupon = (offerId: string) => {
+    setOffers(prev => prev.map(o => {
+      if (o.id === offerId) {
+        return { ...o, couponsClaimed: o.couponsClaimed + 1 };
+      }
+      return o;
+    }));
+
+    if (!claimedCouponIds.includes(offerId)) {
+      setClaimedCouponIds(prev => [...prev, offerId]);
+    }
+
+    // Trigger toast
+    setShowToast('🎟️ ¡Cupón guardado con éxito! Se añadió a tu billetera.');
+    setTimeout(() => setShowToast(null), 3500);
+  };
+
+  // Upgrade customer to merchant role
+  const handleUpgradeToMerchant = () => {
+    setUserRole('merchant');
+    localStorage.setItem('obera_ofertas_user_role', 'merchant');
+    setActiveTab('myshop');
+
+    setShowToast('🚀 ¡Negocio Registrado! Bienvenidos a Oberá en Oferta.');
+    setTimeout(() => setShowToast(null), 4000);
+
+    const newNotif: Notification = {
+      id: `notif-upgrade-${Date.now()}`,
+      text: `🎉 ¡Bienvenido! Tu negocio ahora está verificado en la plataforma. Comenzá a publicar ofertas en tu local Yerba Mate & Delicias Misioneras.`,
+      time: 'Hace 1 min',
+      isRead: false,
+      type: 'new_shop'
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+  };
+
+  // Add new offer via Merchant panel
+  const handleAddOffer = (newOfferData: Omit<Offer, 'id' | 'shopId' | 'shopName' | 'views' | 'couponsClaimed'>) => {
+    const myShop = shops[0]; // Bound to the merchant shop (Yerba Mate & Delicias Misioneras)
+    const newOffer: Offer = {
+      ...newOfferData,
+      id: `offer-${Date.now()}`,
+      shopId: myShop.id,
+      shopName: myShop.name,
+      views: Math.floor(Math.random() * 25) + 5, // simulate initial traction
+      couponsClaimed: 0
+    };
+
+    setOffers(prev => [newOffer, ...prev]);
+
+    // Send simulated flash notification so the top bell badge lights up
+    const newNotif: Notification = {
+      id: `notif-${Date.now()}`,
+      text: `📢 ${myShop.name} acaba de publicar una súper oferta: ¡${newOffer.title}!`,
+      time: 'Hace 1 min',
+      isRead: false,
+      type: newOffer.hasQrCoupon ? 'coupon' : 'flash'
+    };
+
+    setNotifications(prev => [newNotif, ...prev]);
+  };
+
+  // Delete offer
+  const handleDeleteOffer = (id: string) => {
+    setOffers(prev => prev.filter(o => o.id !== id));
+  };
+
+  // Notification handlers
+  const handleMarkAsRead = (id: string) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+  };
+
+  const handleClearNotifications = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+  };
+
+  // Search filter logic
+  const searchedOffers = useMemo(() => {
+    if (!searchQuery) return offers;
+    const query = searchQuery.toLowerCase();
+    return offers.filter(offer => 
+      offer.title.toLowerCase().includes(query) ||
+      offer.description.toLowerCase().includes(query) ||
+      offer.shopName.toLowerCase().includes(query) ||
+      offer.category.toLowerCase().includes(query)
+    );
+  }, [offers, searchQuery]);
+
+  // Click on Story Category circle - transitions views
+  const handleSelectCategoryStory = (category: string) => {
+    setSelectedCategory(category);
+    setActiveTab('categories');
+    // Scroll window to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Click on a Shop - redirects to Map view and centers it
+  const handleSelectShopOnMap = (shopId: string) => {
+    setActiveTab('map');
+    // We can handle targeting in map component via internal state
+    const mapBtn = document.getElementById(`nav-tab-map`);
+    if (mapBtn) mapBtn.click();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Select offer directly from Notifications clicks
+  const handleSelectOfferByTitle = (title: string) => {
+    const matched = offers.find(o => o.title === title);
+    if (matched) {
+      setSelectedDetailOffer(matched);
+    }
+  };
+
+  // Active Merchant Shop (for demo purposes, we tie the merchant dashboard to shop-1 "Yerba Mate & Delicias Misioneras")
+  const activeMerchantShop = shops[0];
+  const merchantOffers = offers.filter(o => o.shopId === activeMerchantShop.id);
+
+  if (userRole === null) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 pb-20 flex flex-col justify-between transition-colors">
+      
+      {/* Dynamic Claim/Action Toast */}
+      {showToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white font-semibold text-xs py-3 px-5 rounded-full shadow-2xl border border-slate-800 dark:border-zinc-800 flex items-center gap-2 animate-bounce">
+          <CheckCircle className="w-4.5 h-4.5 text-green-400" />
+          <span>{showToast}</span>
+        </div>
+      )}
+
+      {/* Main Top Header */}
+      <Header
+        notifications={notifications}
+        onMarkAsRead={handleMarkAsRead}
+        onClearAll={handleClearNotifications}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        onSelectOfferByTitle={handleSelectOfferByTitle}
+        userRole={userRole}
+        onLogout={handleLogout}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        darkMode={darkMode}
+        onToggleDarkMode={() => setDarkMode(!darkMode)}
+      />
+
+      {/* Hero Accent Banner on Home only */}
+      {activeTab === 'home' && !searchQuery && (
+        <div className="bg-zinc-900 dark:bg-zinc-900 text-white py-4 px-6 border-b border-zinc-800 dark:border-zinc-800 shadow-xs transition-colors">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl animate-pulse shrink-0">🧉</span>
+              <div>
+                <h2 className="font-display font-black text-sm sm:text-base leading-tight tracking-tight">¡Oberá en Oferta v1.2 PWA!</h2>
+                <p className="text-xs text-zinc-300 font-medium">Buscá descuentos locales y presentá tus cupones QR sin consumir datos móviles.</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => alert('¡Para instalar, tocá en los tres puntos de tu navegador (Opciones) y luego en "Instalar Aplicación" o "Agregar a la pantalla principal"!')} 
+              className="bg-white text-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-100 font-bold text-xs uppercase px-4 py-2 rounded-xl transition-all shadow-md shrink-0 cursor-pointer"
+            >
+              Instalar PWA
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Primary Container View */}
+      <main className="flex-1 py-8">
+        
+        {/* If Search Query is active, show search results panel instead of normal tab content */}
+        {searchQuery ? (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+            <div className="flex justify-between items-center px-1">
+              <h3 className="text-sm font-black text-slate-800 dark:text-zinc-200">
+                Resultados de búsqueda: <span className="text-brand-orange dark:text-indigo-400">"{searchQuery}"</span>
+              </h3>
+              <button
+                onClick={() => setSearchQuery('')}
+                className="text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 dark:hover:text-zinc-300 font-bold"
+              >
+                Limpiar búsqueda
+              </button>
+            </div>
+
+            {searchedOffers.length === 0 ? (
+              <div className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-3xl p-12 text-center shadow-xs">
+                <p className="font-display font-extrabold text-slate-800 dark:text-zinc-200 text-sm">No encontramos ofertas para tu búsqueda</p>
+                <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">Probá escribiendo una palabra clave como "helado", "mate" o "campera".</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                {searchedOffers.map((offer) => {
+                  const discountPercentage = Math.round(((offer.originalPrice - offer.discountPrice) / offer.originalPrice) * 100);
+                  const shop = shops.find(s => s.id === offer.shopId);
+                  
+                  return (
+                    <div
+                      key={offer.id}
+                      onClick={() => setSelectedDetailOffer(offer)}
+                      className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-xs hover:shadow-lg hover:border-indigo-100 dark:hover:border-zinc-800 cursor-pointer transition-all flex flex-col justify-between group"
+                    >
+                      <div className="relative h-40 bg-slate-50 dark:bg-zinc-950 overflow-hidden">
+                        <img src={offer.image} alt={offer.title} className="w-full h-full object-cover group-hover:scale-105 duration-500 transition-transform" referrerPolicy="no-referrer" />
+                        <div className="absolute top-2.5 left-2.5 bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-lg shadow-sm">
+                          -{discountPercentage}%
+                        </div>
+                      </div>
+                      
+                      <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider block">{offer.shopName}</span>
+                          <h4 className="text-xs font-bold text-slate-800 dark:text-zinc-200 line-clamp-2 leading-snug group-hover:text-brand-orange dark:group-hover:text-indigo-400 transition-colors mt-1">{offer.title}</h4>
+                        </div>
+                        
+                        <div className="flex items-baseline gap-1.5 pt-2 border-t border-slate-50 dark:border-zinc-800">
+                          <span className="text-sm font-display font-black text-red-500 dark:text-red-400">${offer.discountPrice.toLocaleString('es-AR')}</span>
+                          <span className="text-xs text-slate-400 dark:text-zinc-500 line-through">${offer.originalPrice.toLocaleString('es-AR')}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Normal Tab Router */
+          <>
+            {activeTab === 'home' && (
+              <HomeTab
+                offers={offers}
+                shops={shops}
+                onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
+                onOpenOffer={(offer) => setSelectedDetailOffer(offer)}
+                onSelectCategoryStory={handleSelectCategoryStory}
+                onSelectShopOnMap={handleSelectShopOnMap}
+              />
+            )}
+
+            {activeTab === 'categories' && (
+              <CategoriesTab
+                offers={offers}
+                shops={shops}
+                onOpenOffer={(offer) => setSelectedDetailOffer(offer)}
+                selectedCategory={selectedCategory}
+                setSelectedCategory={setSelectedCategory}
+              />
+            )}
+
+            {activeTab === 'map' && (
+              <MapView
+                shops={shops}
+                offers={offers}
+                onSelectOffer={(offer) => setSelectedDetailOffer(offer)}
+              />
+            )}
+
+            {activeTab === 'myshop' && (
+              userRole === 'merchant' ? (
+                <MerchantDashboard
+                  myShop={activeMerchantShop}
+                  myOffers={merchantOffers}
+                  onAddOffer={handleAddOffer}
+                  onDeleteOffer={handleDeleteOffer}
+                />
+              ) : (
+                <div className="max-w-md mx-auto px-4 py-12 text-center space-y-6">
+                  <div className="w-16 h-16 bg-indigo-50 dark:bg-zinc-900 text-brand-orange dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto text-2xl shadow-inner border border-indigo-100/10 dark:border-zinc-800">
+                    🏪
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="font-display font-extrabold text-slate-900 dark:text-zinc-100 text-lg">Sección Exclusiva de Comercios</h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
+                      El panel de control "Mi Negocio" está reservado para comerciantes registrados de Oberá. Desde aquí podés publicar ofertas del día, cupones QR y ver las estadísticas de tus visitas.
+                    </p>
+                  </div>
+                  <div className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 p-4 rounded-2xl shadow-xs text-left">
+                    <h4 className="text-[10px] font-bold text-slate-450 dark:text-zinc-500 uppercase tracking-widest mb-1">Prueba Rápida de la Demo:</h4>
+                    <p className="text-[11px] text-slate-600 dark:text-zinc-400 leading-normal">
+                      Podés cambiar tu rol a comerciante en cualquier momento cerrando sesión desde el menú de tu perfil (arriba a la derecha 👤) o tocando el botón de abajo.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleLogin('merchant')}
+                    className="w-full py-3 bg-brand-orange hover:bg-brand-orange/95 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-xs transition-colors cursor-pointer flex items-center justify-center gap-2 shadow-md"
+                  >
+                    Ingresar como Comercio Demo
+                  </button>
+                </div>
+              )
+            )}
+
+            {activeTab === 'myprofile' && (
+              <MyProfileTab
+                offers={offers}
+                shops={shops}
+                claimedCouponIds={claimedCouponIds}
+                onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
+                onUpgradeToMerchant={handleUpgradeToMerchant}
+                onLogout={handleLogout}
+                userEmail={userEmail}
+              />
+            )}
+          </>
+        )}
+      </main>
+
+      {/* Floating Bottom Nav for Mobile (Hidden on Desktop/Tablet) */}
+      <div className="md:hidden">
+        <BottomNav
+          activeTab={activeTab}
+          setActiveTab={(tab) => {
+            setActiveTab(tab);
+            setSearchQuery(''); // Clear search on tab switch
+            window.scrollTo({ top: 0, behavior: 'instant' });
+          }}
+          notificationsCount={notifications.filter(n => !n.isRead).length}
+          userRole={userRole}
+        />
+      </div>
+
+      {/* Overlays / Modals */}
+      {selectedCouponOffer && (
+        <CouponModal
+          offer={selectedCouponOffer}
+          shop={shops.find(s => s.id === selectedCouponOffer.shopId)}
+          onClose={() => setSelectedCouponOffer(null)}
+          onClaim={handleClaimCoupon}
+        />
+      )}
+
+      {selectedDetailOffer && (
+        <OfferDetailModal
+          offer={selectedDetailOffer}
+          shop={shops.find(s => s.id === selectedDetailOffer.shopId)}
+          onClose={() => setSelectedDetailOffer(null)}
+          onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
+        />
+      )}
+
+      {/* Persistent Interactive AI Chatbot */}
+      {userRole && <AiChatbot />}
+
+    </div>
+  );
+}
