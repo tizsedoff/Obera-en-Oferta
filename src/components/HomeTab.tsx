@@ -51,6 +51,35 @@ export default function HomeTab({
         </div>
       </section>
 
+      {/* 1.5 SPECTACULAR APS DEVELOPER PROMO BANNER CARD */}
+      <section className="bg-gradient-to-r from-indigo-950 via-[#2B0E67] to-zinc-950 text-white rounded-3xl p-6 relative overflow-hidden shadow-xl border border-indigo-500/20">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-400/10 rounded-full blur-3xl -mr-16 -mt-16" />
+        <div className="absolute bottom-0 left-0 w-48 h-48 bg-purple-500/10 rounded-full blur-2xl -ml-12 -mb-12" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="space-y-3 text-center md:text-left max-w-xl">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#5CE1B2]/20 text-[#5CE1B2] rounded-full text-[10px] font-black uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5" /> Desarrollador Tecnológico Oficial
+            </div>
+            <h3 className="font-display font-black text-xl sm:text-2xl leading-tight tracking-tight">
+              Plataforma desarrollada por <span className="text-[#5CE1B2]">APS DEVELOPER</span>
+            </h3>
+            <p className="text-xs text-indigo-100 font-medium leading-relaxed max-w-lg">
+              Creamos soluciones de software rápidas, seguras y de altísima calidad para potenciar comercios locales. ¿Buscás llevar tu negocio al siguiente nivel digital? Conocé nuestro portafolio.
+            </p>
+          </div>
+          
+          <a
+            href="https://aps-web-tau.vercel.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-[#5CE1B2] hover:bg-[#5CE1B2]/90 text-[#2B0E67] font-black text-xs uppercase px-5 py-3 rounded-2xl transition-all shadow-lg shadow-emerald-400/15 flex items-center gap-2 hover:scale-[1.03] cursor-pointer shrink-0"
+          >
+            Visitar APS DEVELOPER 🚀
+          </a>
+        </div>
+      </section>
+
       {/* 2. "OFERTAS CON CUPÓN QR" CAROUSEL */}
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">

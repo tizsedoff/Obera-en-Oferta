@@ -15,10 +15,12 @@ import CouponModal from './components/CouponModal';
 import OfferDetailModal from './components/OfferDetailModal';
 import LoginScreen from './components/LoginScreen';
 import AiChatbot from './components/AiChatbot';
+import AdminPanel from './components/AdminPanel';
 
 export default function App() {
   // Tab control state
   const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
 
   // Dark/Light Mode state
   const [darkMode, setDarkMode] = useState<boolean>(() => {
@@ -120,6 +122,17 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('obera_ofertas_claimed_coupons', JSON.stringify(claimedCouponIds));
   }, [claimedCouponIds]);
+
+  // Listen to admin panel request event
+  useEffect(() => {
+    const handleOpenAdmin = () => {
+      setShowAdminPanel(true);
+    };
+    window.addEventListener('open-admin-panel', handleOpenAdmin);
+    return () => {
+      window.removeEventListener('open-admin-panel', handleOpenAdmin);
+    };
+  }, []);
 
   // Handle claims - updates both coupon counts and merchant analytics dynamically
   const handleClaimCoupon = (offerId: string) => {
@@ -245,6 +258,29 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 pb-20 flex flex-col justify-between transition-colors">
+      
+      {/* Super Prominent APS DEVELOPER Premium Header Banner */}
+      <div className="bg-gradient-to-r from-[#2B0E67] via-[#5CE1B2] to-[#1e074d] text-white py-2 px-4 shadow-sm select-none relative overflow-hidden transition-all duration-300 border-b border-indigo-950/20">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-2.5 w-2.5 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <p className="text-[11px] sm:text-xs font-sans font-black tracking-wide uppercase">
+              Plataforma Desarrollada y Optimizada por <span className="text-[#5CE1B2] font-black underline decoration-[#5CE1B2]/50 hover:text-white transition-colors">APS DEVELOPER</span>
+            </p>
+          </div>
+          <a
+            href="https://aps-web-tau.vercel.app/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-white/15 hover:bg-white/25 active:scale-95 text-white font-extrabold text-[10px] sm:text-[11px] uppercase tracking-wider px-3 py-1 rounded-xl transition-all flex items-center gap-1.5 shrink-0 border border-white/20 shadow-xs"
+          >
+            Visitar Web Oficial <ExternalLink className="w-3.5 h-3.5 text-[#5CE1B2]" />
+          </a>
+        </div>
+      </div>
       
       {/* Dynamic Claim/Action Toast */}
       {showToast && (
@@ -462,6 +498,19 @@ export default function App() {
           shop={shops.find(s => s.id === selectedDetailOffer.shopId)}
           onClose={() => setSelectedDetailOffer(null)}
           onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
+        />
+      )}
+
+      {/* Exclusive Developer Admin Panel */}
+      {showAdminPanel && (
+        <AdminPanel
+          shops={shops}
+          onUpdateShops={setShops}
+          offers={offers}
+          onUpdateOffers={setOffers}
+          notifications={notifications}
+          onUpdateNotifications={setNotifications}
+          onClose={() => setShowAdminPanel(false)}
         />
       )}
 

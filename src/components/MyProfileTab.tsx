@@ -167,13 +167,18 @@ export default function MyProfileTab({
             </div>
 
             <div className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 p-4 rounded-2xl shadow-xs">
-              <span className="text-[10px] text-slate-450 dark:text-zinc-500 font-bold uppercase block mb-1">Soporte Municipal</span>
+              <span className="text-[10px] text-slate-450 dark:text-zinc-500 font-bold uppercase block mb-1">APS DEVELOPER</span>
               <p className="text-xs font-bold text-slate-700 dark:text-zinc-300 leading-normal">
                 ¿Tenés dudas sobre un comercio?
               </p>
-              <p className="text-[9px] text-brand-orange dark:text-indigo-400 font-bold mt-1 hover:underline cursor-pointer flex items-center gap-0.5">
-                Chatear con Soporte <ArrowRight className="w-3 h-3" />
-              </p>
+              <a
+                href="https://aps-web-tau.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[9px] text-brand-orange dark:text-indigo-400 font-bold mt-1 hover:underline flex items-center gap-0.5"
+              >
+                Visitar APS DEVELOPER <ArrowRight className="w-3 h-3" />
+              </a>
             </div>
           </div>
         </div>
@@ -225,6 +230,14 @@ export default function MyProfileTab({
               <div className="py-3 flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-zinc-300">
                 <span className="flex items-center gap-2"><HelpCircle className="w-4 h-4 text-slate-400" /> Términos de Servicio</span>
                 <ChevronRight className="w-4 h-4 text-slate-400" />
+              </div>
+
+              <div 
+                onClick={() => window.dispatchEvent(new CustomEvent('open-admin-panel'))} 
+                className="py-3 flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-zinc-300 cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-850 px-2 rounded-lg transition-colors"
+              >
+                <span className="flex items-center gap-2"><Settings className="w-4 h-4 text-brand-orange dark:text-indigo-400" /> Panel de Control (Admin)</span>
+                <span className="text-[10px] text-brand-orange dark:text-indigo-400 font-bold underline">Abrir</span>
               </div>
 
               <div className="py-3 flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-zinc-300">

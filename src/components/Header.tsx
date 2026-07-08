@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bell, Search, X, Flame, Sparkles, Store, LogOut, Sun, Moon, Home, Grid, Map, Check, User } from 'lucide-react';
 import { Notification, TabType } from '../types';
+import BrandLogo from './BrandLogo';
 
 interface HeaderProps {
   notifications: Notification[];
@@ -64,17 +65,7 @@ export default function Header({
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
         
         {/* Logo and Brand */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="bg-brand-orange text-white p-2.5 rounded-xl shadow-md shadow-indigo-500/10 flex items-center justify-center font-bold text-lg">
-            🧉
-          </div>
-          <div>
-            <h1 className="font-display font-black text-lg sm:text-xl leading-none text-slate-900 dark:text-zinc-50 tracking-tight flex items-center gap-1">
-              OBERÁ <span className="text-brand-orange dark:text-indigo-400">EN OFERTA</span>
-            </h1>
-            <p className="text-[9px] sm:text-[10px] text-slate-400 dark:text-zinc-500 uppercase tracking-widest font-extrabold mt-0.5">Tierra de Descuentos</p>
-          </div>
-        </div>
+        <BrandLogo />
 
         {/* Sleek Desktop Top Navigation (Hidden on Mobile) */}
         <nav className="hidden md:flex items-center gap-1 bg-slate-50 dark:bg-zinc-800/60 p-1 rounded-2xl border border-slate-200/40 dark:border-zinc-700/50">

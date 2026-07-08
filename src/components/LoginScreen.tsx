@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldCheck, User, Store, KeyRound, Sparkles, AlertCircle, ArrowRight, RefreshCw } from 'lucide-react';
+import BrandLogo from './BrandLogo';
 
 interface LoginScreenProps {
   onLogin: (role: 'customer' | 'merchant', email?: string) => void;
@@ -52,15 +53,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
       {/* Header Accent */}
       <div className="flex justify-between items-center max-w-md mx-auto w-full pt-4 z-10">
-        <div className="flex items-center gap-2">
-          <div className="bg-brand-orange text-white p-2.5 rounded-xl font-bold text-lg flex items-center justify-center">
-            🧉
-          </div>
-          <div>
-            <span className="font-display font-black text-slate-800 dark:text-zinc-100 text-sm tracking-wide">OBERÁ EN OFERTA</span>
-            <span className="text-[9px] text-slate-400 dark:text-zinc-500 block font-bold tracking-widest uppercase">MISIONES</span>
-          </div>
-        </div>
+        <BrandLogo />
         <span className="text-[10px] bg-indigo-50 dark:bg-zinc-800 text-brand-orange dark:text-indigo-400 font-bold px-2.5 py-1 rounded-full border border-indigo-100/50 dark:border-zinc-700">
           Versión PWA v1.2
         </span>
@@ -196,8 +189,8 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       </div>
 
       {/* Footer copyright and location */}
-      <div className="max-w-md mx-auto w-full text-center text-[10px] text-slate-400 dark:text-zinc-500 pb-2 z-10">
-        <p>© 2026 Oberá en Oferta • Municipalidad de Oberá, Misiones</p>
+      <div className="max-w-md mx-auto w-full text-center text-[10px] text-slate-400 dark:text-zinc-500 pb-2 z-10 font-sans">
+        <p>© 2026 Oberá en Oferta • <a href="https://aps-web-tau.vercel.app/" target="_blank" rel="noopener noreferrer" className="underline font-bold text-slate-500 hover:text-brand-orange dark:text-zinc-400 dark:hover:text-indigo-400 transition-colors">APS DEVELOPER</a></p>
         <p className="mt-0.5 font-bold text-slate-500 dark:text-zinc-650">Hecho para potenciar el comercio de tierra colorada 🧉</p>
       </div>
     </div>
