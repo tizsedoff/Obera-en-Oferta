@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Edit, Trash2, KeyRound, Save, CheckCircle, AlertTriangle, Building, Tag, Compass, Sparkles, ExternalLink } from 'lucide-react';
 import { Shop, Offer, Notification } from '../types';
+import ShopLogo from './ShopLogo';
 
 interface AdminPanelProps {
   shops: Shop[];
@@ -30,7 +31,7 @@ export default function AdminPanel({
   // Shop forms state
   const [editingShop, setEditingShop] = useState<Shop | null>(null);
   const [isAddingShop, setIsAddingShop] = useState(false);
-  const [shopForm, setShopForm] = useState<Omit<Shop, 'id'>>({
+  const [shopForm, setShopForm] = useState<Omit<Shop, 'id'> & { latitude: string | number; longitude: string | number }>({
     name: '',
     logo: '🏬',
     category: 'Gastronomía',
@@ -38,7 +39,9 @@ export default function AdminPanel({
     isOpen: true,
     address: '',
     phone: '',
-    rating: 4.5
+    rating: 4.5,
+    latitude: -27.4856,
+    longitude: -55.1193
   });
 
   // Offer forms state
@@ -71,13 +74,30 @@ export default function AdminPanel({
   // --- SHOP ACTIONS ---
   const saveShop = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Safely parse latitude and longitude, supporting both dot and comma as decimal separator
+    const cleanLatStr = String(shopForm.latitude).trim().replace(',', '.');
+    const cleanLngStr = String(shopForm.longitude).trim().replace(',', '.');
+
+    let parsedLat = parseFloat(cleanLatStr);
+    let parsedLng = parseFloat(cleanLngStr);
+
+    if (isNaN(parsedLat)) parsedLat = -27.4856;
+    if (isNaN(parsedLng)) parsedLng = -55.1193;
+
+    const finalShopForm = {
+      ...shopForm,
+      latitude: parsedLat,
+      longitude: parsedLng
+    };
+
     if (editingShop) {
       // Edit existing shop
-      const updated = shops.map(s => s.id === editingShop.id ? { ...s, ...shopForm } : s);
+      const updated = shops.map(s => s.id === editingShop.id ? { ...s, ...finalShopForm } : s);
       onUpdateShops(updated);
       
       // Update shopName in existing offers
-      const updatedOffers = offers.map(o => o.shopId === editingShop.id ? { ...o, shopName: shopForm.name, category: shopForm.category } : o);
+      const updatedOffers = offers.map(o => o.shopId === editingShop.id ? { ...o, shopName: finalShopForm.name, category: finalShopForm.category } : o);
       onUpdateOffers(updatedOffers);
 
       setEditingShop(null);
@@ -85,7 +105,7 @@ export default function AdminPanel({
       // Add new shop
       const newShop: Shop = {
         id: `shop-${Date.now()}`,
-        ...shopForm
+        ...finalShopForm
       };
       onUpdateShops([...shops, newShop]);
       setIsAddingShop(false);
@@ -106,6 +126,32 @@ export default function AdminPanel({
 
   const startEditShop = (shop: Shop) => {
     setEditingShop(shop);
+
+    // Retrieve real coordinates if they are undefined (to preserve accuracy of initial shops)
+    let defaultLat = -27.4856;
+    let defaultLng = -55.1193;
+
+    const REAL_COORDINATES: Record<string, { lat: number; lng: number }> = {
+      'shop-1': { lat: -27.484224, lng: -55.120531 },
+      'shop-2': { lat: -27.486214, lng: -55.118811 },
+      'shop-3': { lat: -27.489512, lng: -55.115201 },
+      'shop-4': { lat: -27.485633, lng: -55.119312 },
+      'shop-5': { lat: -27.483011, lng: -55.122045 },
+      'shop-6': { lat: -27.487512, lng: -55.116521 },
+    };
+
+    if (shop.latitude !== undefined) {
+      defaultLat = shop.latitude;
+    } else if (REAL_COORDINATES[shop.id]) {
+      defaultLat = REAL_COORDINATES[shop.id].lat;
+    }
+
+    if (shop.longitude !== undefined) {
+      defaultLng = shop.longitude;
+    } else if (REAL_COORDINATES[shop.id]) {
+      defaultLng = REAL_COORDINATES[shop.id].lng;
+    }
+
     setShopForm({
       name: shop.name,
       logo: shop.logo,
@@ -114,7 +160,9 @@ export default function AdminPanel({
       isOpen: shop.isOpen,
       address: shop.address,
       phone: shop.phone,
-      rating: shop.rating
+      rating: shop.rating,
+      latitude: defaultLat,
+      longitude: defaultLng
     });
     setIsAddingShop(false);
   };
@@ -127,6 +175,9 @@ export default function AdminPanel({
   };
 
   const resetShopForm = () => {
+    // Generate slight random offset near Oberá center so each new business has a realistic distinct point by default
+    const randomLatOffset = (Math.random() - 0.5) * 0.009;
+    const randomLngOffset = (Math.random() - 0.5) * 0.009;
     setShopForm({
       name: '',
       logo: '🏬',
@@ -135,7 +186,9 @@ export default function AdminPanel({
       isOpen: true,
       address: '',
       phone: '',
-      rating: 4.5
+      rating: 4.5,
+      latitude: parseFloat((-27.4856 + randomLatOffset).toFixed(6)),
+      longitude: parseFloat((-55.1193 + randomLngOffset).toFixed(6))
     });
   };
 
@@ -366,9 +419,9 @@ export default function AdminPanel({
                         className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl flex items-center justify-between gap-4"
                       >
                         <div className="flex items-center gap-3">
-                          <span className="text-3xl p-2 bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl shadow-xs shrink-0">
-                            {shop.logo}
-                          </span>
+                          <div className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-xl shadow-xs shrink-0 p-2 w-14 h-14 flex items-center justify-center overflow-hidden">
+                            <ShopLogo logo={shop.logo} className="text-3xl" fallbackSize="w-10 h-10" />
+                          </div>
                           <div>
                             <h4 className="font-bold text-xs text-slate-900 dark:text-zinc-100">{shop.name}</h4>
                             <p className="text-[10px] text-slate-450 dark:text-zinc-500 font-semibold">{shop.category} • {shop.zone}</p>
@@ -412,36 +465,60 @@ export default function AdminPanel({
                   </div>
 
                   <form onSubmit={saveShop} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-450 dark:text-zinc-500 uppercase tracking-widest">Nombre del Negocio</label>
+                    <div className="space-y-1 col-span-1 md:col-span-2">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Nombre del Negocio</label>
                       <input
                         type="text"
                         required
                         value={shopForm.name}
                         onChange={(e) => setShopForm({ ...shopForm, name: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-150 focus:outline-none"
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
                         placeholder="Ej: Yerba Mate & Delicias Misioneras"
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-450 dark:text-zinc-500 uppercase tracking-widest">Emoji de Logo</label>
-                      <input
-                        type="text"
-                        required
-                        value={shopForm.logo}
-                        onChange={(e) => setShopForm({ ...shopForm, logo: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-150 focus:outline-none"
-                        placeholder="Ej: 🧉"
-                      />
+                    <div className="space-y-1 col-span-1 md:col-span-2">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Logo del Comercio (Emoji, URL o Cargar Foto)</label>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            required
+                            value={shopForm.logo}
+                            onChange={(e) => setShopForm({ ...shopForm, logo: e.target.value })}
+                            className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                            placeholder="Ej: 🧉 o enlace de imagen"
+                          />
+                        </div>
+                        <label className="bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-200 border border-slate-200 dark:border-zinc-700 font-bold text-xs rounded-xl px-4 py-2.5 cursor-pointer flex items-center justify-center shrink-0 transition-colors">
+                          Cargar Foto Logo
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                  if (typeof reader.result === 'string') {
+                                    setShopForm({ ...shopForm, logo: reader.result });
+                                  }
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-450 dark:text-zinc-500 uppercase tracking-widest">Categoría</label>
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Categoría</label>
                       <select
                         value={shopForm.category}
                         onChange={(e) => setShopForm({ ...shopForm, category: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-150 focus:outline-none"
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
                       >
                         <option value="Gastronomía">Gastronomía</option>
                         <option value="Indumentaria">Indumentaria</option>
@@ -452,49 +529,73 @@ export default function AdminPanel({
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-450 dark:text-zinc-500 uppercase tracking-widest">Zona de Oberá</label>
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Zona de Oberá</label>
                       <input
                         type="text"
                         required
                         value={shopForm.zone}
                         onChange={(e) => setShopForm({ ...shopForm, zone: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-150 focus:outline-none"
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
                         placeholder="Ej: Av. Sarmiento o Av. Libertad"
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-450 dark:text-zinc-500 uppercase tracking-widest">Dirección Exacta</label>
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Dirección Exacta</label>
                       <input
                         type="text"
                         required
                         value={shopForm.address}
                         onChange={(e) => setShopForm({ ...shopForm, address: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-150 focus:outline-none"
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
                         placeholder="Ej: Av. Sarmiento 450, Oberá"
                       />
                     </div>
 
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-450 dark:text-zinc-500 uppercase tracking-widest">Teléfono de Contacto</label>
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Teléfono de Contacto</label>
                       <input
                         type="text"
                         value={shopForm.phone}
                         onChange={(e) => setShopForm({ ...shopForm, phone: e.target.value })}
-                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-150 focus:outline-none"
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
                         placeholder="Ej: 543755421111"
                       />
                     </div>
 
-                    <div className="flex items-center gap-2 pt-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Latitud (Mapa)</label>
+                      <input
+                        type="text"
+                        required
+                        value={shopForm.latitude !== undefined && shopForm.latitude !== null ? shopForm.latitude : ''}
+                        onChange={(e) => setShopForm({ ...shopForm, latitude: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                        placeholder="Ej: -27.4856"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Longitud (Mapa)</label>
+                      <input
+                        type="text"
+                        required
+                        value={shopForm.longitude !== undefined && shopForm.longitude !== null ? shopForm.longitude : ''}
+                        onChange={(e) => setShopForm({ ...shopForm, longitude: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                        placeholder="Ej: -55.1193"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-4 col-span-1 md:col-span-2">
                       <input
                         type="checkbox"
                         id="isOpen"
                         checked={shopForm.isOpen}
                         onChange={(e) => setShopForm({ ...shopForm, isOpen: e.target.checked })}
-                        className="rounded text-brand-orange focus:ring-brand-orange w-4 h-4"
+                        className="rounded text-emerald-500 focus:ring-emerald-400 w-4 h-4"
                       />
-                      <label htmlFor="isOpen" className="text-xs font-bold text-slate-700 dark:text-zinc-300">
+                      <label htmlFor="isOpen" className="text-xs font-extrabold text-slate-700 dark:text-zinc-300 cursor-pointer">
                         ¿Abierto actualmente?
                       </label>
                     </div>

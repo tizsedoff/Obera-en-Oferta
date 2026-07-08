@@ -24,15 +24,90 @@ async function startServer() {
     }
   });
 
+  // Local matching function for robust offline/emergency reasoning fallback
+  function getLocalFallbackResponse(message: string): string {
+    const msg = (message || "").toLowerCase();
+    
+    if (msg.includes("mate") || msg.includes("yerba") || msg.includes("chipa") || msg.includes("delicias")) {
+      return `Te cuento sobre **Yerba Mate & Delicias Misioneras** (Av. Sarmiento 450). 
+Tienen un ofertón espectacular: **30% de Descuento en Combo Mate + Termo de Acero** (Termo inox 1L + Yerba Mate de 500g).
+*   **Precio Oferta:** $31.500 (Precio normal: $45.000)
+*   **Código de Cupón QR:** \`OBERAMATE-30-OFF-X921\`
+*   **Vence:** 10 de julio de 2026.
+¡Ideal para arrancar el día bien misionero, chamigo!`;
+    }
+    
+    if (msg.includes("helado") || msg.includes("polar") || msg.includes("crema") || msg.includes("frío") || msg.includes("frio")) {
+      return `Si querés refrescarte, en **Heladería Polar** (Av. Sarmiento 210) tienen una promo imperdible:
+**2x1 en Kilo de Helado Artesanal** (¡tenés que probar el sabor único de Crema de Mate Cocido!).
+*   **Precio Oferta:** $6.000 (Precio normal: $12.000)
+*   **Código de Cupón QR:** \`POLAR-2X1-KILO-Y712\`
+*   **Vence:** 6 de julio de 2026.
+¡Para disfrutar con amigos o la familia!`;
+    }
+    
+    if (msg.includes("zapatilla") || msg.includes("zapato") || msg.includes("calzado") || msg.includes("carhue") || msg.includes("pie")) {
+      return `En **Calzados Carhué** (Av. Libertad 340) tienen calzado de primera calidad:
+**15% de Descuento en Zapatillas Deportivas** de primeras marcas.
+*   **Precio Oferta:** $46.750 (Precio normal: $55.000)
+*   **Código de Cupón QR:** \`CARHUE-DEPOR-15-Z882\`
+*   **Vence:** 15 de julio de 2026.
+¡Para andar cómodo por toda la Tierra Colorada!`;
+    }
+    
+    if (msg.includes("tv") || msg.includes("smart") || msg.includes("tele") || msg.includes("electro") || msg.includes("televisor")) {
+      return `Te paso el dato de **Electro Oberá** (Sgto. Cabral 15, frente a Plaza San Martín):
+Tienen una Oferta Flash sin cupón QR para un **Smart TV 43" Full HD Smart Tech**.
+*   **Precio Oferta:** $299.990 (Precio normal: $380.000)
+*   **Vence:** 5 de julio de 2026.
+*   *Nota:* Actualmente el local físico está cerrado, ¡pero podés aprovechar la oferta online de la plataforma!`;
+    }
+    
+    if (msg.includes("harina") || msg.includes("favorita") || msg.includes("condor") || msg.includes("cóndor") || msg.includes("super")) {
+      return `En el **Supermercado El Cóndor** (Av. Italia 890) podés encontrar:
+**Pack x3 Harina Favorita** en Oferta Flash (sin cupón QR), ideal para unas buenas tortas fritas misioneras en días lluviosos.
+*   **Precio Oferta:** $2.900 (Precio normal: $4.200)
+*   **Vence:** 8 de julio de 2026.
+¡Para que no falte nada en la mesa, chamigo!`;
+    }
+    
+    if (msg.includes("campera") || msg.includes("abrigo") || msg.includes("ropa") || msg.includes("indumentaria") || msg.includes("style")) {
+      return `En **Misiones Style Indumentaria** (Av. Libertad 120) tienen una promo para el frío:
+**Campera de Abrigo de Gabardina con Corderito** (Oferta Flash sin cupón, talles S al XXL).
+*   **Precio Oferta:** $59.500 (Precio normal: $85.000)
+*   **Vence:** 7 de julio de 2026.
+¡Especial para abrigarse con estilo!`;
+    }
+    
+    if (msg.includes("cupón") || msg.includes("cupon") || msg.includes("descuento") || msg.includes("secreto") || msg.includes("promoción") || msg.includes("codigo") || msg.includes("código")) {
+      return `¡Te tiro un secreto de Oberá en Oferta! 
+Utilizá el código secreto **\`OBERABOT20\`** para recibir un **15% de descuento adicional** en tus compras presenciales en tiendas de la zona centro adheridas.
+Además, si realizás una compra y subís una foto de tu ticket/recibo acá en el chat, te sumamos **100 puntos de fidelidad** para canjear en la Fiesta Nacional del Inmigrante. ¡Una locura!`;
+    }
+
+    return `¡Hola, che! ¿Cómo andás? Como tu Asistente local de la Tierra Colorada, tengo todos los comercios y ofertas de Oberá memorizados en mi chip local:
+
+1.  **Yerba Mate & Delicias Misioneras** 🧉: 30% de descuento en Combo Mate + Termo ($31.500).
+2.  **Heladería Polar** 🍦: 2x1 en Kilo de Helado Artesanal (¡con sabor de Crema de Mate Cocido!).
+3.  **Calzados Carhué** 👟: 15% off en Zapatillas Deportivas ($46.750).
+4.  **Electro Oberá** ⚡: Smart TV 43" en Oferta Flash ($299.990).
+5.  **Supermercado El Cóndor** 🛒: Pack x3 Harina Favorita ($2.900).
+6.  **Misiones Style Indumentaria** 👕: Campera de abrigo con corderito ($59.500).
+
+*   *Tip Secreto:* Usá el código \`OBERABOT20\` para un 15% extra en el centro.
+¿De cuál de estos locales u ofertas te gustaría conocer más detalles, gurí?`;
+  }
+
   // API Route for Gemini Chatbot with Vision & Reasoning
   app.post("/api/chat", async (req, res) => {
     try {
       const { message, image } = req.body;
 
-      if (!process.env.GEMINI_API_KEY) {
+      if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === "YOUR_API_KEY") {
         console.warn("GEMINI_API_KEY is not defined. Falling back to advanced local reasoning.");
+        const fallbackText = getLocalFallbackResponse(message);
         return res.json({
-          text: "🧉 **[Modo Offline Local]** ¡Hola, che! En este momento no tengo conexión directa con la llave de la API de Gemini, pero como tu Asistente de Oberá en Oferta te puedo ayudar con toda la información sobre comercios, zonas y ofertas de Oberá. ¿Qué te gustaría consultar?",
+          text: `🧉 **[Asistente Local]** ${fallbackText}`,
           isFallback: true
         });
       }
@@ -55,7 +130,7 @@ OFERTAS ACTIVAS Y CUPONES (Offers):
 1. "30% Off Combo Mate + Termo de Acero" en "Yerba Mate & Delicias Misioneras". Termo inox 1L + Yerba Mate 500g. Cupón QR: OBERAMATE-30-OFF-X921. Precio normal: $45000, Precio oferta: $31500. Vence el 10 de julio de 2026.
 2. "2x1 en Kilo de Helado Artesanal" en "Heladería Polar". Kilo de helado con sabor Crema de Mate Cocido y otros. Cupón QR: POLAR-2X1-KILO-Y712. Precio normal: $12000, Precio oferta: $6000. Vence el 6 de julio de 2026.
 3. "15% de Descuento en Zapatillas Deportivas" en "Calzados Carhué". Zapatillas de primera marca. Cupón QR: CARHUE-DEPOR-15-Z882. Precio normal: $55000, Precio oferta: $46750. Vence el 15 de julio de 2026.
-4. "Smart TV 43\\" Full HD Smart Tech" en "Electro Oberá". Súper Oferta Flash sin cupón QR. Precio normal: $380000, Precio oferta: $299990. Vence el 5 de julio de 2026.
+4. "Smart TV 43\" Full HD Smart Tech" en "Electro Oberá". Súper Oferta Flash sin cupón QR. Precio normal: $380000, Precio oferta: $299990. Vence el 5 de julio de 2026.
 5. "Pack x3 Harina Favorita" en "Supermercado El Cóndor". Oferta Flash sin cupón QR, ideal para tortas fritas misioneras en días lluviosos. Precio normal: $4200, Precio oferta: $2900. Vence el 8 de julio de 2026.
 6. "Campera de Abrigo de Gabardina con Corderito" en "Misiones Style Indumentaria". Oferta Flash sin cupón QR, talles S al XXL. Precio normal: $85000, Precio oferta: $59500. Vence el 7 de julio de 2026.
 
@@ -93,25 +168,64 @@ Mantén tus respuestas bien redactadas, amigables, con párrafos breves, emojis 
       // Add user message text or placeholder
       parts.push({ text: message || "Analiza esta foto adjunta con respecto a Oberá en Oferta." });
 
-      // Generate content using Gemini 3.5 Flash
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: { parts },
-        config: {
-          systemInstruction: systemPrompt,
-          temperature: 0.7,
-        }
-      });
+      let responseText = "";
 
-      const responseText = response.text || "¡Che! Recibí tu mensaje pero no pude procesar la respuesta en este momento. ¿Me volvés a preguntar?";
+      try {
+        // Generate content using Gemini 3.5 Flash (preferred primary)
+        const response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: { parts },
+          config: {
+            systemInstruction: systemPrompt,
+            temperature: 0.7,
+          }
+        });
+        responseText = response.text || "";
+      } catch (primaryError: any) {
+        console.warn("Primary model 'gemini-3.5-flash' is unavailable (possibly 503 high demand). Trying resilient model 'gemini-3.1-flash-lite'...", primaryError);
+        try {
+          // Attempt secondary model (gemini-3.1-flash-lite)
+          const response = await ai.models.generateContent({
+            model: "gemini-3.1-flash-lite",
+            contents: { parts },
+            config: {
+              systemInstruction: systemPrompt,
+              temperature: 0.7,
+            }
+          });
+          responseText = response.text || "";
+        } catch (liteError: any) {
+          console.warn("Secondary model 'gemini-3.1-flash-lite' also failed. Trying stable backup model 'gemini-flash-latest'...", liteError);
+          try {
+            // Attempt tertiary backup model
+            const response = await ai.models.generateContent({
+              model: "gemini-flash-latest",
+              contents: { parts },
+              config: {
+                systemInstruction: systemPrompt,
+                temperature: 0.7,
+              }
+            });
+            responseText = response.text || "";
+          } catch (backupError: any) {
+            console.error("All Gemini API models failed. Activating robust offline/emergency local matching system...", backupError);
+            const fallbackText = getLocalFallbackResponse(message);
+            responseText = `🧉 **[Asistente de Respaldo Local]** ${fallbackText}`;
+          }
+        }
+      }
+
+      if (!responseText) {
+        const fallbackText = getLocalFallbackResponse(message);
+        responseText = `🧉 **[Asistente de Respaldo Local]** ${fallbackText}`;
+      }
+
       return res.json({ text: responseText });
 
     } catch (error: any) {
-      console.error("Gemini API Error in server.ts:", error);
-      return res.status(500).json({
-        error: "Internal Server Error",
-        details: error.message || String(error)
-      });
+      console.error("Error outside generation cycle in server.ts:", error);
+      const fallbackText = getLocalFallbackResponse(req.body?.message || "");
+      return res.json({ text: `🧉 **[Asistente de Respaldo Local]** ${fallbackText}` });
     }
   });
 

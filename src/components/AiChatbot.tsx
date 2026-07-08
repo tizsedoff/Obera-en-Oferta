@@ -37,7 +37,7 @@ export default function AiChatbot({ shops = [], offers = [] }: AiChatbotProps) {
     {
       id: 'welcome',
       sender: 'bot',
-      text: '¡Hola! Soy tu Asistente de Oberá en Oferta. 🧉✨\n\n¿En qué puedo ayudarte hoy a ahorrar, encontrar comercios en la ciudad o potenciar tu negocio?\n\n📸 ¡Novedad Multimodal! Podés arrastrar, subir o pegar fotos de tus productos, tickets de compra u ofertas para que los analice con mi visión artificial con inteligencia artificial.',
+      text: '🤖 ¡Hola! Soy **OberáAI**, la Inteligencia Artificial oficial de Oberá en Oferta.\n\nHe sido entrenada con algoritmos avanzados de procesamiento de lenguaje natural para conocer todos los comercios, promociones, precios y zonas comerciales de Oberá en tiempo real.\n\n✨ ¿En qué puedo asistirte hoy para optimizar tu presupuesto, encontrar locales o potenciar tu comercio?\n\n📸 **Visión Computacional:** Podés arrastrar o subir imágenes de productos, tickets de compra u ofertas para que las procese al instante con mis modelos de visión artificial.',
       timestamp: new Date(),
     },
   ]);
@@ -264,24 +264,26 @@ export default function AiChatbot({ shops = [], offers = [] }: AiChatbotProps) {
         )}
 
         {/* Chat Header */}
-        <div className="bg-gradient-to-r from-brand-orange to-brand-red dark:from-indigo-650 dark:to-indigo-850 p-4 text-white flex items-center justify-between border-b border-orange-100/10 shrink-0">
+        <div className="bg-gradient-to-r from-emerald-600 to-teal-700 dark:from-zinc-900 dark:to-zinc-950 p-4 text-white flex items-center justify-between border-b border-white/5 shrink-0">
           <div className="flex items-center gap-2.5">
-            <span className="text-2xl p-1.5 bg-white/10 dark:bg-black/20 rounded-xl">🧉</span>
+            <span className="p-1.5 bg-white/10 rounded-xl flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-emerald-300 animate-pulse" />
+            </span>
             <div>
               <div className="flex items-center gap-1.5">
-                <h3 className="font-display font-black text-xs uppercase tracking-wider">Asistente Virtual</h3>
-                <span className="text-[9px] bg-white/20 px-1.5 py-0.5 rounded-full font-bold">Oberá en Oferta AI</span>
+                <h3 className="font-display font-black text-xs uppercase tracking-wider">OberáAI Core</h3>
+                <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.5 rounded-full font-bold">MODELO 3.5</span>
               </div>
-              <p className="text-[10px] text-orange-100/90 dark:text-indigo-100/90 font-semibold flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                Asistente Virtual • En línea
+              <p className="text-[10px] text-zinc-200 dark:text-zinc-400 font-semibold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Agente Autónomo • En línea
               </p>
             </div>
           </div>
           
           <button
             onClick={() => setIsOpen(false)}
-            className="p-1.5 bg-white/15 hover:bg-white/25 dark:bg-black/10 dark:hover:bg-black/20 rounded-lg text-white transition-colors cursor-pointer"
+            className="p-1.5 bg-white/15 hover:bg-white/25 dark:bg-zinc-800 dark:hover:bg-zinc-700 rounded-lg text-white transition-colors cursor-pointer"
           >
             <ChevronDown className="w-4 h-4" />
           </button>
@@ -297,8 +299,8 @@ export default function AiChatbot({ shops = [], offers = [] }: AiChatbotProps) {
                 className={`flex gap-2.5 max-w-[85%] ${isBot ? 'mr-auto' : 'ml-auto flex-row-reverse'} animate-scale-up`}
               >
                 {isBot && (
-                  <span className="text-xl p-1 bg-white dark:bg-zinc-800 rounded-lg h-8 w-8 flex items-center justify-center shadow-xs shrink-0 border border-slate-100 dark:border-zinc-800">
-                    🤖
+                  <span className="p-1.5 bg-emerald-50 dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 rounded-xl h-8 w-8 flex items-center justify-center shadow-xs shrink-0 border border-emerald-100/30 dark:border-zinc-800">
+                    <Sparkles className="w-4 h-4 animate-pulse" />
                   </span>
                 )}
                 
@@ -307,7 +309,7 @@ export default function AiChatbot({ shops = [], offers = [] }: AiChatbotProps) {
                     className={`rounded-2xl px-3.5 py-2.5 text-xs font-medium whitespace-pre-wrap leading-relaxed shadow-xs ${
                       isBot
                         ? 'bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-200 border border-slate-100 dark:border-zinc-800/60 rounded-tl-none'
-                        : 'bg-brand-orange dark:bg-indigo-600 text-white rounded-tr-none'
+                        : 'bg-emerald-600 dark:bg-indigo-600 text-white rounded-tr-none'
                     }`}
                   >
                     {/* Multimodal attached image in message bubble */}
@@ -329,8 +331,8 @@ export default function AiChatbot({ shops = [], offers = [] }: AiChatbotProps) {
           {/* Typing indicator */}
           {isTyping && (
             <div className="flex gap-2.5 max-w-[80%] mr-auto animate-pulse">
-              <span className="text-xl p-1 bg-white dark:bg-zinc-800 rounded-lg h-8 w-8 flex items-center justify-center shadow-xs shrink-0 border border-slate-100 dark:border-zinc-800">
-                🤖
+              <span className="p-1.5 bg-emerald-50 dark:bg-zinc-900 text-emerald-600 dark:text-emerald-400 rounded-xl h-8 w-8 flex items-center justify-center shadow-xs shrink-0 border border-emerald-100/30 dark:border-zinc-800">
+                <Sparkles className="w-4 h-4 animate-pulse" />
               </span>
               <div className="bg-white dark:bg-zinc-900 rounded-2xl rounded-tl-none px-4 py-3 border border-slate-100 dark:border-zinc-800/60 shadow-xs flex items-center gap-1.5 h-9">
                 <span className="w-1.5 h-1.5 bg-slate-400 dark:bg-zinc-500 rounded-full animate-bounce [animation-delay:-0.3s]" />

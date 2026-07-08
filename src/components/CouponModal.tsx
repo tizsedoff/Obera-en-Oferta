@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, QrCode, MapPin, Calendar, Check, Copy, Share2 } from 'lucide-react';
 import { Offer, Shop } from '../types';
+import ShopLogo from './ShopLogo';
 
 interface CouponModalProps {
   offer: Offer;
@@ -40,7 +41,9 @@ export default function CouponModal({ offer, shop, onClose, onClaim }: CouponMod
         {/* Modal content styled as a realistic Ticket */}
         <div className="bg-gradient-to-br from-brand-orange to-brand-red dark:from-indigo-600 dark:to-indigo-800 p-6 text-white text-center pb-8">
           <div className="flex items-center justify-center gap-2 mb-2">
-            <span className="text-2xl">{shop?.logo || '🏪'}</span>
+            <div className="flex items-center justify-center bg-white/20 dark:bg-black/30 rounded-lg backdrop-blur-xs border border-white/10 w-8 h-8 overflow-hidden shrink-0">
+              <ShopLogo logo={shop?.logo} className="text-2xl" fallbackSize="w-6 h-6" />
+            </div>
             <span className="text-xs font-bold uppercase tracking-widest opacity-90">{shop?.name}</span>
           </div>
           <h3 className="font-display font-black text-xl leading-tight mb-2">
@@ -61,9 +64,15 @@ export default function CouponModal({ offer, shop, onClose, onClaim }: CouponMod
         {/* Coupon Main Body */}
         <div className="p-6 bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-200">
           {/* QR Code Container (CRITICAL: MUST remain bright white background for optical scanning) */}
-          <div className="flex flex-col items-center justify-center bg-white border border-slate-200 rounded-2xl p-5 mb-4 shadow-sm">
+          <div className="flex flex-col items-center justify-center bg-white border border-slate-200 rounded-2xl p-5 mb-4 shadow-sm relative">
+            
+            {/* Expiration Badge */}
+            <div className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-xs animate-pulse">
+              Vence hoy 23:59 hs
+            </div>
+
             <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(couponCode)}&color=09090b`}
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`https://obera-en-oferta.vercel.app/canjear?id=${offer.id}`)}&color=09090b`}
               alt="Código QR de Descuento"
               className="w-40 h-40 object-contain transition-transform hover:scale-105"
               referrerPolicy="no-referrer"
@@ -75,9 +84,9 @@ export default function CouponModal({ offer, shop, onClose, onClaim }: CouponMod
           </div>
 
           {/* Instructions */}
-          <div className="text-center mb-4">
-            <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed font-semibold">
-              Presentá este QR en caja para acceder al descuento.
+          <div className="text-center mb-4 px-1">
+            <p className="text-xs text-slate-600 dark:text-zinc-350 leading-relaxed font-bold">
+              Presentá este código QR en la caja del comercio para registrar el descuento.
             </p>
           </div>
 

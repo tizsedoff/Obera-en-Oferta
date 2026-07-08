@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Store, Plus, TrendingUp, Users, QrCode, Trash2, CheckCircle, AlertCircle, Eye, RefreshCw, Sparkles, ChevronRight, Upload, Image, X } from 'lucide-react';
 import { Offer, Shop } from '../types';
+import ShopLogo from './ShopLogo';
 
 interface MerchantDashboardProps {
   myOffers: Offer[];
@@ -97,8 +98,8 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
         <div className="absolute left-[-20px] bottom-[-20px] w-32 h-32 bg-brand-red rounded-full blur-3xl opacity-15 transition-all duration-700 group-hover:scale-110" />
         
         <div className="flex flex-col sm:flex-row sm:items-center gap-5 relative z-10">
-          <div className="h-16 w-16 rounded-2xl bg-brand-orange dark:bg-indigo-600 text-white text-3xl font-bold flex flex-wrap items-center justify-center shadow-lg shadow-orange-500/10 transition-transform duration-500 group-hover:rotate-6">
-            {myShop.logo}
+          <div className="h-16 w-16 rounded-2xl bg-brand-orange dark:bg-indigo-600 text-white text-3xl font-bold flex flex-wrap items-center justify-center shadow-lg shadow-orange-500/10 transition-transform duration-500 group-hover:rotate-6 overflow-hidden shrink-0">
+            <ShopLogo logo={myShop.logo} className="text-3xl" fallbackSize="w-14 h-14" />
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">

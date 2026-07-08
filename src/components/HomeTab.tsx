@@ -1,7 +1,25 @@
-import React from 'react';
-import { ArrowRight, QrCode, Sparkles, Flame, Percent, Star, Compass, LayoutGrid } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { 
+  Heart, 
+  Bookmark, 
+  Share2, 
+  QrCode, 
+  MapPin, 
+  Clock, 
+  Search, 
+  X, 
+  Sun, 
+  Moon, 
+  Flame, 
+  Sparkles, 
+  Map, 
+  Store,
+  ChevronDown
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Offer, Shop } from '../types';
 import { CATEGORIES_STORY } from '../data';
+import ShopLogo from './ShopLogo';
 
 interface HomeTabProps {
   offers: Offer[];
@@ -10,6 +28,10 @@ interface HomeTabProps {
   onOpenOffer: (offer: Offer) => void;
   onSelectCategoryStory: (category: string) => void;
   onSelectShopOnMap: (shopId: string) => void;
+  darkMode: boolean;
+  onToggleDarkMode: () => void;
+  activeTab: string;
+  setActiveTab: (tab: any) => void;
 }
 
 export default function HomeTab({
@@ -18,276 +40,470 @@ export default function HomeTab({
   onOpenCoupon,
   onOpenOffer,
   onSelectCategoryStory,
-  onSelectShopOnMap
+  onSelectShopOnMap,
+  darkMode,
+  onToggleDarkMode,
+  activeTab,
+  setActiveTab
 }: HomeTabProps) {
-  // Filter offers
-  const qrOffers = offers.filter(o => o.hasQrCoupon);
-  const flashOffers = offers.filter(o => o.isFlashSale);
+  // Localized states for likes, bookmarks, and counts
+  const [likedOffers, setLikedOffers] = useState<{ [key: string]: boolean }>(() => {
+    const saved = localStorage.getItem('obera_feed_likes');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [bookmarkedOffers, setBookmarkedOffers] = useState<{ [key: string]: boolean }>(() => {
+    const saved = localStorage.getItem('obera_feed_bookmarks');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  // Keep a map of custom likes count for each offer to simulate social traction
+  const [likesCount, setLikesCount] = useState<{ [key: string]: number }>(() => {
+    const counts: { [key: string]: number } = {};
+    offers.forEach(o => {
+      // Seed a realistic number of likes based on views
+      counts[o.id] = Math.floor(o.views * 1.5) + 24;
+    });
+    return counts;
+  });
+
+  // Track double tap visual hearts popping
+  const [poppingHearts, setPoppingHearts] = useState<{ id: string; x: number; y: number; time: number }[]>([]);
+
+  // Search and Category filters
+  const [feedSearch, setFeedSearch] = useState('');
+  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('all');
+
+  // Save interactions to localStorage
+  useEffect(() => {
+    localStorage.setItem('obera_feed_likes', JSON.stringify(likedOffers));
+  }, [likedOffers]);
+
+  useEffect(() => {
+    localStorage.setItem('obera_feed_bookmarks', JSON.stringify(bookmarkedOffers));
+  }, [bookmarkedOffers]);
+
+  // Handle double tap or click to like
+  const lastTapRef = useRef<{ [key: string]: number }>({});
+  
+  const handleCardTouchOrClick = (offerId: string, e: React.MouseEvent<HTMLDivElement>) => {
+    const now = Date.now();
+    const lastTap = lastTapRef.current[offerId] || 0;
+    const delay = 300; // ms
+
+    if (now - lastTap < delay) {
+      // Double tap triggered!
+      handleLikeToggle(offerId, true);
+      
+      // Get click position relative to the target card
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Add a popping heart
+      const newHeart = {
+        id: `${offerId}-${now}`,
+        x,
+        y,
+        time: now
+      };
+      setPoppingHearts(prev => [...prev, newHeart]);
+
+      // Remove after animation completes
+      setTimeout(() => {
+        setPoppingHearts(prev => prev.filter(h => h.id !== newHeart.id));
+      }, 800);
+    }
+    
+    lastTapRef.current[offerId] = now;
+  };
+
+  const handleLikeToggle = (offerId: string, forceLike = false) => {
+    setLikedOffers(prev => {
+      const isLiked = prev[offerId];
+      const nextState = forceLike ? true : !isLiked;
+      
+      // Update the count accordingly
+      if (nextState !== isLiked) {
+        setLikesCount(prevCount => ({
+          ...prevCount,
+          [offerId]: prevCount[offerId] + (nextState ? 1 : -1)
+        }));
+      }
+      
+      return {
+        ...prev,
+        [offerId]: nextState
+      };
+    });
+  };
+
+  const handleBookmarkToggle = (offerId: string) => {
+    setBookmarkedOffers(prev => ({
+      ...prev,
+      [offerId]: !prev[offerId]
+    }));
+  };
+
+  // Filter offers based on search and category
+  const filteredOffers = useMemo(() => {
+    return offers.filter(o => {
+      const matchesSearch = feedSearch === '' || 
+        o.title.toLowerCase().includes(feedSearch.toLowerCase()) ||
+        o.description.toLowerCase().includes(feedSearch.toLowerCase()) ||
+        o.shopName.toLowerCase().includes(feedSearch.toLowerCase()) ||
+        o.category.toLowerCase().includes(feedSearch.toLowerCase());
+
+      const matchesCategory = selectedCategoryFilter === 'all' || 
+        o.category.toLowerCase() === selectedCategoryFilter.toLowerCase();
+
+      return matchesSearch && matchesCategory;
+    });
+  }, [offers, feedSearch, selectedCategoryFilter]);
+
+  // Construct custom WhatsApp message
+  const getWhatsAppShareUrl = (offer: Offer) => {
+    const message = `¡Che, mirá este ofertón imperdible en Oberá en Oferta! 🔥🧉\n\n🛍️ *${offer.title}*\n🏪 Comercio: *${offer.shopName}*\n💵 Precio: *$${offer.discountPrice.toLocaleString('es-AR')}* (Antes ~$$${offer.originalPrice.toLocaleString('es-AR')}~)\n\n🎁 ¡Reclamá tu cupón QR de descuento GRATIS desde la app acá! 👇\nhttps://obera-en-oferta.vercel.app/`;
+    return `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+  };
 
   return (
-    <div className="space-y-10 pb-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 transition-colors">
+    <div className="relative w-full flex justify-center bg-zinc-50 dark:bg-zinc-950 transition-colors duration-300 h-[calc(100vh-56px)] md:h-[calc(100vh-80px)] md:py-2 overflow-hidden">
       
-      {/* 1. STORIES/QUICK LINKS CIRCLES */}
-      <section className="space-y-4">
-        <h3 className="font-display font-extrabold text-slate-900 dark:text-zinc-50 text-sm tracking-wide uppercase flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-brand-orange dark:text-indigo-400" />
-          Categorías Destacadas
-        </h3>
-        <div className="flex gap-5 overflow-x-auto pb-3 pt-1 no-scrollbar scroll-smooth snap-x snap-mandatory">
-          {CATEGORIES_STORY.map((cat) => (
-            <button
-              key={cat.id}
-              onClick={() => onSelectCategoryStory(cat.id)}
-              className="flex flex-col items-center gap-2 shrink-0 snap-start focus:outline-hidden group cursor-pointer"
-            >
-              <div className={`h-16 w-16 rounded-full border-2 p-0.5 flex items-center justify-center transition-transform group-hover:scale-105 ${cat.color} dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-xs`}>
-                <span className="text-3xl filter drop-shadow-sm">{cat.emoji}</span>
-              </div>
-              <span className="text-xs font-bold text-slate-700 dark:text-zinc-300 tracking-tight group-hover:text-brand-orange dark:group-hover:text-indigo-400 transition-colors">
-                {cat.name}
-              </span>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* 1.5 SPECTACULAR APS DEVELOPER PROMO BANNER CARD */}
-      <section className="bg-gradient-to-r from-indigo-950 via-[#2B0E67] to-zinc-950 text-white rounded-3xl p-6 relative overflow-hidden shadow-xl border border-indigo-500/20">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-400/10 rounded-full blur-3xl -mr-16 -mt-16" />
-        <div className="absolute bottom-0 left-0 w-48 h-48 bg-purple-500/10 rounded-full blur-2xl -ml-12 -mb-12" />
+      {/* Outer Phone Mockup wrapper on Desktop, full screen on Mobile */}
+      <div className="relative w-full max-w-md md:max-w-3xl lg:max-w-4xl h-full bg-black shadow-2xl md:rounded-3xl overflow-hidden border border-zinc-800/20 flex flex-col justify-between">
         
-        <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="space-y-3 text-center md:text-left max-w-xl">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#5CE1B2]/20 text-[#5CE1B2] rounded-full text-[10px] font-black uppercase tracking-wider">
-              <Sparkles className="w-3.5 h-3.5" /> Desarrollador Tecnológico Oficial
-            </div>
-            <h3 className="font-display font-black text-xl sm:text-2xl leading-tight tracking-tight">
-              Plataforma desarrollada por <span className="text-[#5CE1B2]">APS DEVELOPER</span>
-            </h3>
-            <p className="text-xs text-indigo-100 font-medium leading-relaxed max-w-lg">
-              Creamos soluciones de software rápidas, seguras y de altísima calidad para potenciar comercios locales. ¿Buscás llevar tu negocio al siguiente nivel digital? Conocé nuestro portafolio.
-            </p>
-          </div>
+        {/* FLOATING TOP OVERLAY HEADER - STATIC ABOVE SCROLLING CARDS */}
+        <div className="absolute top-0 left-0 right-0 z-30 bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 flex flex-col gap-3">
           
-          <a
-            href="https://aps-web-tau.vercel.app/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-[#5CE1B2] hover:bg-[#5CE1B2]/90 text-[#2B0E67] font-black text-xs uppercase px-5 py-3 rounded-2xl transition-all shadow-lg shadow-emerald-400/15 flex items-center gap-2 hover:scale-[1.03] cursor-pointer shrink-0"
-          >
-            Visitar APS DEVELOPER 🚀
-          </a>
-        </div>
-      </section>
+          {/* Logo row */}
+          <div className="flex items-center justify-between md:hidden">
+            <div className="flex items-center gap-2 select-none">
+              <span className="text-2xl filter drop-shadow-md">🧉</span>
+              <div className="flex flex-col leading-none">
+                <span className="font-display font-black text-sm tracking-wide text-white uppercase drop-shadow-md">
+                  OBERÁ
+                </span>
+                <span className="font-sans font-bold text-[9px] tracking-[0.16em] text-emerald-400 mt-0.5 uppercase drop-shadow-md">
+                  EN OFERTA
+                </span>
+              </div>
+            </div>
 
-      {/* 2. "OFERTAS CON CUPÓN QR" CAROUSEL */}
-      <section className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-          <h3 className="font-display font-black text-slate-900 dark:text-zinc-50 text-lg flex items-center gap-2">
-            <span className="p-1 bg-indigo-50 dark:bg-zinc-800 text-brand-orange dark:text-indigo-400 rounded-lg">🎟️</span>
-            Ofertas con Cupón QR
-          </h3>
-          <span className="text-xs font-bold text-brand-orange dark:text-indigo-400 flex items-center gap-1">
-            Descuentos directos en caja
-          </span>
-        </div>
-
-        <div className="flex gap-5 overflow-x-auto pb-4 pt-1 no-scrollbar snap-x snap-mandatory">
-          {qrOffers.map((offer) => {
-            const shop = shops.find(s => s.id === offer.shopId);
-            const discountPercentage = Math.round(((offer.originalPrice - offer.discountPrice) / offer.originalPrice) * 100);
-
-            return (
-              <div
-                key={offer.id}
-                className="w-[280px] sm:w-[320px] shrink-0 bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800/80 rounded-3xl overflow-hidden shadow-xs hover:shadow-md transition-all duration-300 snap-start flex flex-col justify-between"
+            {/* Top row actions (Theme Switcher and Developer Tag) */}
+            <div className="flex items-center gap-2">
+              <span className="text-[9px] bg-emerald-500/25 text-emerald-400 font-extrabold px-2 py-0.5 rounded-lg border border-emerald-500/20 shadow-xs uppercase tracking-wider">
+                Feed Vivo
+              </span>
+              <button
+                onClick={onToggleDarkMode}
+                className="p-1.5 bg-white/10 hover:bg-white/20 active:scale-95 border border-white/15 rounded-xl text-white transition-all cursor-pointer backdrop-blur-xs"
+                title={darkMode ? 'Modo Claro' : 'Modo Oscuro'}
               >
-                {/* Image & overlay */}
-                <div className="relative h-44 bg-slate-100 dark:bg-zinc-950 overflow-hidden">
+                {darkMode ? <Sun className="w-3.5 h-3.5 text-amber-300" /> : <Moon className="w-3.5 h-3.5 text-slate-200" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Search bar inside header overlay */}
+          <div className="relative w-full md:hidden">
+            <input
+              type="text"
+              placeholder="Buscar descuentos y locales..."
+              value={feedSearch}
+              onChange={(e) => setFeedSearch(e.target.value)}
+              className="w-full bg-white/10 backdrop-blur-md border border-white/15 rounded-xl pl-9 pr-8 py-1.5 text-xs text-white placeholder-white/60 focus:outline-hidden focus:border-emerald-400 focus:bg-white/20 transition-all shadow-md"
+            />
+            <Search className="absolute left-3 top-2.5 text-white/60 w-3.5 h-3.5" />
+            {feedSearch && (
+              <button
+                onClick={() => setFeedSearch('')}
+                className="absolute right-2.5 top-2.5 text-white/60 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Inline horizontal Category Stories filter */}
+          <div className="flex gap-2.5 overflow-x-auto pb-1 no-scrollbar scroll-smooth md:justify-center">
+            <button
+              onClick={() => setSelectedCategoryFilter('all')}
+              className={`px-3 py-1 rounded-full text-[10px] md:text-xs font-extrabold transition-all shrink-0 cursor-pointer border ${
+                selectedCategoryFilter === 'all'
+                  ? 'bg-emerald-500 border-emerald-400 text-white shadow-xs'
+                  : 'bg-black/40 border-white/10 text-white/80 hover:bg-black/60'
+              }`}
+            >
+              Todos 🔥
+            </button>
+            {CATEGORIES_STORY.map((cat) => (
+              <button
+                key={cat.id}
+                onClick={() => setSelectedCategoryFilter(cat.id)}
+                className={`px-3 py-1 rounded-full text-[10px] md:text-xs font-extrabold transition-all shrink-0 cursor-pointer flex items-center gap-1 border ${
+                  selectedCategoryFilter.toLowerCase() === cat.id.toLowerCase()
+                    ? 'bg-emerald-500 border-emerald-400 text-white shadow-xs'
+                    : 'bg-black/40 border-white/10 text-white/80 hover:bg-black/60'
+                }`}
+              >
+                <span>{cat.emoji}</span>
+                <span>{cat.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* FEED SCROLL CONTAINER */}
+        <div 
+          className="flex-1 overflow-y-auto snap-y snap-mandatory w-full h-full bg-zinc-950 scroll-smooth no-scrollbar"
+          style={{ scrollBehavior: 'smooth' }}
+        >
+          {filteredOffers.length === 0 ? (
+            <div className="h-full w-full flex flex-col items-center justify-center text-center p-8 bg-zinc-950 text-white gap-4">
+              <span className="text-4xl animate-bounce">🔍🧉</span>
+              <div className="space-y-1">
+                <h4 className="font-display font-black text-sm">¡Sin ofertas encontradas!</h4>
+                <p className="text-xs text-zinc-400 max-w-[240px]">
+                  No hay resultados para tu búsqueda actual. Probá con otra categoría o palabra clave.
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setFeedSearch('');
+                  setSelectedCategoryFilter('all');
+                }}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Restablecer Filtros
+              </button>
+            </div>
+          ) : (
+            filteredOffers.map((offer, idx) => {
+              const isLiked = likedOffers[offer.id] || false;
+              const isBookmarked = bookmarkedOffers[offer.id] || false;
+              const currentLikes = likesCount[offer.id] || 0;
+              const discountPercentage = Math.round(((offer.originalPrice - offer.discountPrice) / offer.originalPrice) * 100);
+              
+              // Find matching shop
+              const shop = shops.find(s => s.id === offer.shopId);
+
+              return (
+                <div 
+                  key={offer.id}
+                  onClick={(e) => handleCardTouchOrClick(offer.id, e)}
+                  className="snap-start h-full w-full relative flex flex-col justify-end overflow-hidden select-none"
+                  style={{ height: '100%' }}
+                >
+                  {/* Full Size Background Image */}
                   <img
                     src={offer.image}
                     alt={offer.title}
-                    className="w-full h-full object-cover hover:scale-103 transition-transform duration-500"
+                    className="absolute inset-0 w-full h-full object-cover pointer-events-none select-none transition-transform duration-500 hover:scale-103"
                     referrerPolicy="no-referrer"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 to-transparent" />
                   
-                  {/* Category logo */}
-                  <div className="absolute top-3 left-3 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xs text-slate-800 dark:text-zinc-200 text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1.5 border border-slate-200/50 dark:border-zinc-700">
-                    <span>{shop?.logo || '🏪'}</span>
-                    <span className="text-[10px] tracking-tight">{offer.category}</span>
-                  </div>
+                  {/* Dark Gradient legibility overlays */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/95 pointer-events-none" />
 
-                  {/* Discount percentage tag */}
-                  <div className="absolute top-3 right-3 bg-red-500 dark:bg-red-600 text-white text-xs font-black px-2.5 py-1 rounded-xl shadow-xs">
-                    {discountPercentage}% OFF
-                  </div>
+                  {/* DOUBLE TAP HEART SPLASH POPPING */}
+                  <AnimatePresence>
+                    {poppingHearts
+                      .filter(h => h.id.startsWith(offer.id))
+                      .map(heart => (
+                        <motion.div
+                          key={heart.id}
+                          initial={{ scale: 0, opacity: 0, rotate: Math.random() * 30 - 15 }}
+                          animate={{ scale: [1, 1.4, 1.2], opacity: [0, 1, 1, 0] }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.7, ease: 'easeOut' }}
+                          style={{
+                            position: 'absolute',
+                            left: heart.x - 48,
+                            top: heart.y - 48,
+                            width: 96,
+                            height: 96,
+                            pointerEvents: 'none',
+                            zIndex: 40
+                          }}
+                        >
+                          <Heart className="w-full h-full text-rose-500 fill-rose-500 drop-shadow-xl" />
+                        </motion.div>
+                      ))}
+                  </AnimatePresence>
 
-                  {/* Shop name overlay */}
-                  <span className="absolute bottom-3 left-3 text-xs font-extrabold text-orange-200 dark:text-indigo-200 uppercase tracking-wider drop-shadow-xs">
-                    {offer.shopName}
-                  </span>
-                </div>
+                  {/* BOTTOM OVERLAYS & CONTENT GRID */}
+                  <div className="relative z-10 w-full px-3 md:px-6 pb-2 md:pb-4 flex items-end justify-between gap-3 md:gap-6">
+                    
+                    {/* LEFT COLUMN: INFO OVERLAY */}
+                    <div className="flex-1 flex flex-col items-start gap-1.5 md:gap-2 text-white">
+                      
+                      {/* Shop Info with pulse open green dot */}
+                      <div className="flex items-center gap-2 md:gap-3">
+                        <div className="relative">
+                          <div className="w-8 h-8 md:w-9 md:h-9 rounded-full bg-white dark:bg-zinc-900 border border-white/20 flex items-center justify-center text-lg md:text-xl shadow-md select-none overflow-hidden">
+                            <ShopLogo logo={shop?.logo} className="text-lg md:text-xl" fallbackSize="w-8 h-8 md:w-9 md:h-9" />
+                          </div>
+                          {shop?.isOpen && (
+                            <span className="absolute bottom-0 right-0 w-2 h-2 bg-emerald-500 border border-zinc-900 rounded-full animate-pulse" />
+                          )}
+                        </div>
+                        <div className="flex flex-col leading-none">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (shop) onSelectShopOnMap(shop.id);
+                            }}
+                            className="font-bold text-[11px] md:text-xs lg:text-sm hover:underline cursor-pointer flex items-center gap-1 text-zinc-100 drop-shadow-xs text-left"
+                          >
+                            {offer.shopName}
+                          </button>
+                          <span className="text-[9px] md:text-[10px] text-zinc-400 flex items-center gap-0.5 drop-shadow-xs mt-0.5">
+                            <MapPin className="w-2.5 h-2.5 text-zinc-400" />
+                            {shop?.zone || 'Oberá'}
+                          </span>
+                        </div>
+                      </div>
 
-                {/* Body Details */}
-                <div className="p-4 flex-1 flex flex-col justify-between space-y-3 bg-white dark:bg-zinc-900">
-                  <div>
-                    <h4
-                      onClick={() => onOpenOffer(offer)}
-                      className="font-display font-bold text-slate-900 dark:text-zinc-100 text-sm leading-snug line-clamp-2 hover:text-brand-orange dark:hover:text-indigo-400 cursor-pointer transition-colors"
-                    >
-                      {offer.title}
-                    </h4>
-                    <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1 line-clamp-2">{offer.description}</p>
-                  </div>
+                      {/* Filter badges */}
+                      <div className="flex flex-wrap gap-1 md:gap-1.5">
+                        <span className="bg-red-500 text-white text-[9px] md:text-[10px] font-black px-1.5 py-0.5 rounded-lg shadow-sm flex items-center gap-0.5">
+                          <Flame className="w-2.5 h-2.5 text-white fill-white animate-bounce" />
+                          -{discountPercentage}%
+                        </span>
+                        <span className="bg-white/10 backdrop-blur-md text-white text-[9px] md:text-[10px] font-bold px-1.5 py-0.5 rounded-lg border border-white/10">
+                          {offer.category}
+                        </span>
+                      </div>
 
-                  {/* Price Row */}
-                  <div className="flex items-baseline gap-2 pt-1 border-t border-slate-50 dark:border-zinc-800/80">
-                    <span className="text-lg font-display font-black text-red-500 dark:text-red-400">
-                      ${offer.discountPrice.toLocaleString('es-AR')}
-                    </span>
-                    <span className="text-xs text-slate-400 dark:text-zinc-500 line-through">
-                      ${offer.originalPrice.toLocaleString('es-AR')}
-                    </span>
-                  </div>
+                      {/* Offer Details */}
+                      <div className="space-y-0.5 w-full">
+                        <h3 className="font-display font-extrabold text-xs sm:text-sm md:text-base leading-tight drop-shadow-md text-white line-clamp-1">
+                          {offer.title}
+                        </h3>
+                        <p className="text-[10px] md:text-[11px] text-zinc-350 drop-shadow-xs line-clamp-1 leading-snug font-medium">
+                          {offer.description}
+                        </p>
+                      </div>
 
-                  {/* Action button */}
-                  <button
-                    onClick={() => onOpenCoupon(offer)}
-                    className="w-full py-2.5 bg-brand-orange hover:bg-brand-orange/95 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl flex items-center justify-center gap-1.5 shadow-sm shadow-indigo-500/10 cursor-pointer transition-colors"
-                  >
-                    <QrCode className="w-4 h-4" /> Obtener Cupón QR
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+                      {/* Prices & urgency block */}
+                      <div className="flex items-center gap-2.5 w-full pt-0.5">
+                        <div className="flex flex-col leading-none">
+                          <span className="text-[8px] md:text-[9px] text-zinc-400 line-through">
+                            ${offer.originalPrice.toLocaleString('es-AR')}
+                          </span>
+                          <span className="text-sm md:text-base lg:text-lg font-display font-black text-emerald-400">
+                            ${offer.discountPrice.toLocaleString('es-AR')}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-500/15 border border-amber-500/20 text-amber-400 rounded-md text-[8px] md:text-[9px] font-black uppercase tracking-wider animate-pulse">
+                          <Clock className="w-2.5 h-2.5" />
+                          <span>{offer.isFlashSale ? 'Faltan horas' : 'Solo hoy'}</span>
+                        </div>
+                      </div>
 
-      {/* 3. "OFERTAS DEL DÍA" (FLASH SALES) CAROUSEL */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-display font-black text-slate-900 dark:text-zinc-50 text-lg flex items-center gap-2">
-            <span className="p-1 bg-red-50 dark:bg-zinc-800 text-brand-red rounded-lg">🔥</span>
-            Ofertas del Día (Flash Sales)
-          </h3>
-          <span className="text-[10px] px-2 py-0.5 bg-red-100 dark:bg-red-950/50 text-brand-red dark:text-red-400 font-bold rounded-full animate-pulse uppercase tracking-wider">
-            Expira Hoy
-          </span>
-        </div>
+                      {/* CTA Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenCoupon(offer);
+                        }}
+                        className="w-full mt-1 py-2 md:py-2.5 bg-gradient-to-r from-orange-500 via-amber-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-extrabold rounded-xl text-[10px] md:text-[11px] uppercase tracking-wider shadow-md hover:shadow-lg active:scale-98 transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-orange-400/20"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        RECLAMAR CUPÓN GRATIS
+                      </button>
 
-        <div className="flex gap-4 overflow-x-auto pb-4 pt-1 no-scrollbar snap-x snap-mandatory">
-          {flashOffers.map((offer) => {
-            const discountPercentage = Math.round(((offer.originalPrice - offer.discountPrice) / offer.originalPrice) * 100);
-
-            return (
-              <div
-                key={offer.id}
-                className="w-[200px] shrink-0 bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800/80 rounded-3xl overflow-hidden shadow-xs hover:shadow-sm transition-all snap-start flex flex-col justify-between"
-              >
-                <div>
-                  {/* Thumbnail */}
-                  <div className="relative h-32 bg-slate-50 dark:bg-zinc-950">
-                    <img
-                      src={offer.image}
-                      alt={offer.title}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute top-2 right-2 bg-red-500 dark:bg-red-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded-md">
-                      -{discountPercentage}%
                     </div>
-                  </div>
 
-                  {/* Details */}
-                  <div className="p-3 space-y-1">
-                    <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-                      {offer.shopName}
-                    </span>
-                    <h4
-                      onClick={() => onOpenOffer(offer)}
-                      className="text-xs font-bold text-slate-800 dark:text-zinc-200 line-clamp-2 leading-tight hover:text-brand-orange dark:hover:text-indigo-400 cursor-pointer transition-colors"
-                    >
-                      {offer.title}
-                    </h4>
+                    {/* RIGHT COLUMN: VERTICAL INTERACTION BAR */}
+                    <div className="flex flex-col items-center gap-2 md:gap-2.5 shrink-0 pb-2">
+                      
+                      {/* Like Action */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleLikeToggle(offer.id);
+                        }}
+                        className="flex flex-col items-center gap-0.5 cursor-pointer focus:outline-hidden group"
+                      >
+                        <div className="w-9 h-9 md:w-10 md:h-10 bg-black/45 backdrop-blur-md border border-white/15 hover:scale-105 active:scale-90 rounded-full flex items-center justify-center text-white transition-all shadow-md">
+                          <Heart className={`w-4.5 h-4.5 md:w-5 md:h-5 transition-transform ${isLiked ? 'text-rose-500 fill-rose-500 scale-110' : 'group-hover:scale-110'}`} />
+                        </div>
+                        <span className="text-[8px] md:text-[9px] font-bold text-zinc-300 drop-shadow-md">
+                          {currentLikes}
+                        </span>
+                      </button>
+
+                      {/* Bookmark/Save Action */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleBookmarkToggle(offer.id);
+                        }}
+                        className="flex flex-col items-center gap-0.5 cursor-pointer focus:outline-hidden group"
+                      >
+                        <div className="w-9 h-9 md:w-10 md:h-10 bg-black/45 backdrop-blur-md border border-white/15 hover:scale-105 active:scale-90 rounded-full flex items-center justify-center text-white transition-all shadow-md">
+                          <Bookmark className={`w-4.5 h-4.5 md:w-5 md:h-5 transition-transform ${isBookmarked ? 'text-amber-500 fill-amber-500 scale-110' : 'group-hover:scale-110'}`} />
+                        </div>
+                        <span className="text-[8px] md:text-[9px] font-bold text-zinc-300 drop-shadow-md">
+                          {isBookmarked ? 'Guardado' : 'Guardar'}
+                        </span>
+                      </button>
+
+                      {/* Share WhatsApp Action */}
+                      <a
+                        href={getWhatsAppShareUrl(offer)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex flex-col items-center gap-0.5 cursor-pointer focus:outline-hidden group"
+                        title="Compartir por WhatsApp"
+                      >
+                        <div className="w-9 h-9 md:w-10 md:h-10 bg-black/45 backdrop-blur-md border border-white/15 hover:scale-105 active:scale-90 rounded-full flex items-center justify-center text-white transition-all shadow-md">
+                          <Share2 className="w-4.5 h-4.5 md:w-5 md:h-5 text-white group-hover:scale-110 transition-transform" />
+                        </div>
+                        <span className="text-[8px] md:text-[9px] font-bold text-zinc-300 drop-shadow-md">
+                          Compartir
+                        </span>
+                      </a>
+
+                      {/* Map Location shortcut */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (shop) onSelectShopOnMap(shop.id);
+                        }}
+                        className="flex flex-col items-center gap-0.5 cursor-pointer focus:outline-hidden group"
+                        title="Ver en Mapa"
+                      >
+                        <div className="w-9 h-9 md:w-10 md:h-10 bg-black/45 backdrop-blur-md border border-white/15 hover:scale-105 active:scale-90 rounded-full flex items-center justify-center text-white transition-all shadow-md">
+                          <Map className="w-4.5 h-4.5 md:w-5 md:h-5 text-emerald-400 group-hover:scale-110 transition-transform" />
+                        </div>
+                        <span className="text-[8px] md:text-[9px] font-bold text-zinc-300 drop-shadow-md">
+                          Mapa
+                        </span>
+                      </button>
+
+                    </div>
+
                   </div>
                 </div>
-
-                {/* Price and Action Footer */}
-                <div className="p-3 pt-0">
-                  <div className="flex flex-col mb-2 pt-2 border-t border-slate-50 dark:border-zinc-800/50">
-                    <span className="text-[10px] text-slate-400 dark:text-zinc-500 line-through">
-                      ${offer.originalPrice.toLocaleString('es-AR')}
-                    </span>
-                    <span className="text-xs font-display font-extrabold text-red-500 dark:text-red-400">
-                      ${offer.discountPrice.toLocaleString('es-AR')}
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => onOpenOffer(offer)}
-                    className="w-full py-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-zinc-800 dark:hover:bg-zinc-700/80 text-slate-700 dark:text-zinc-300 font-bold text-[10px] border border-slate-100 dark:border-zinc-800 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Ver Oferta
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* 4. "LOCALES DESTACADOS" GRID - FULLY RESPONSIVE */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-display font-black text-slate-900 dark:text-zinc-50 text-lg flex items-center gap-2">
-            <span className="p-1 bg-blue-50 dark:bg-zinc-800 text-blue-600 dark:text-blue-400 rounded-lg">🏪</span>
-            Locales Destacados en Oberá
-          </h3>
-          <span className="text-xs font-bold text-slate-400 dark:text-zinc-500">Tierra colorada</span>
+              );
+            })
+          )}
         </div>
 
-        {/* CSS GRID: 2 columns on mobile, 3 columns on tablet, 4-5 columns on desktop */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          {shops.map((shop) => (
-            <div
-              key={shop.id}
-              onClick={() => onSelectShopOnMap(shop.id)}
-              className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800/80 rounded-2xl p-5 flex flex-col items-center text-center justify-between gap-4 shadow-xs hover:shadow-md hover:border-indigo-100 dark:hover:border-zinc-700 cursor-pointer transition-all duration-300"
-            >
-              <div className="flex flex-col items-center gap-3">
-                <span className="text-4xl p-3 bg-slate-50 dark:bg-zinc-950 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-inner">
-                  {shop.logo}
-                </span>
-                <div>
-                  <h4 className="font-display font-bold text-xs text-slate-800 dark:text-zinc-200 leading-tight line-clamp-2">
-                    {shop.name}
-                  </h4>
-                  <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest mt-0.5 block">
-                    {shop.category}
-                  </span>
-                </div>
-              </div>
+        {/* Swipe indicators footer */}
+        {filteredOffers.length > 1 && (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center pointer-events-none">
+            <span className="text-[9px] font-extrabold text-white/50 tracking-wider flex items-center gap-1">
+              Deslizá para ver más <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
+            </span>
+          </div>
+        )}
 
-              <div className="w-full flex items-center justify-between pt-3 border-t border-slate-50 dark:border-zinc-800/80">
-                <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 flex items-center gap-0.5">
-                  ⭐ {shop.rating}
-                </span>
-                
-                <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full ${
-                  shop.isOpen 
-                    ? 'bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-400' 
-                    : 'bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400'
-                }`}>
-                  {shop.isOpen ? 'Abierto' : 'Cerrado'}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
+      </div>
     </div>
   );
 }

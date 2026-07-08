@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, MessageCircle, MapPin, Store, Calendar, CheckCircle, Percent, QrCode } from 'lucide-react';
 import { Offer, Shop } from '../types';
+import ShopLogo from './ShopLogo';
 
 interface OfferDetailModalProps {
   offer: Offer;
@@ -48,9 +49,9 @@ export default function OfferDetailModal({ offer, shop, onClose, onOpenCoupon }:
           {/* Shop details overlay at the bottom of the image */}
           <div className="absolute bottom-4 left-4 right-4 text-white">
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-xl px-2 py-0.5 bg-white/20 dark:bg-black/30 rounded-lg backdrop-blur-xs border border-white/10">
-                {shop?.logo || '🏪'}
-              </span>
+              <div className="flex items-center justify-center bg-white/20 dark:bg-black/30 rounded-lg backdrop-blur-xs border border-white/10 w-8 h-8 overflow-hidden shrink-0">
+                <ShopLogo logo={shop?.logo} className="text-xl" fallbackSize="w-6 h-6" />
+              </div>
               <span className="text-xs font-extrabold uppercase tracking-widest text-orange-200 dark:text-indigo-200 drop-shadow-xs">
                 {shop?.name}
               </span>

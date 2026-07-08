@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, QrCode, Phone, CheckCircle, Info, Bookmark, ExternalLink, RefreshCw, Smartphone, Star } from 'lucide-react';
 
 import { Shop, Offer, Notification, TabType } from './types';
@@ -6,6 +7,7 @@ import { INITIAL_SHOPS, INITIAL_OFFERS, INITIAL_NOTIFICATIONS } from './data';
 
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
+import InicioTab from './components/InicioTab';
 import HomeTab from './components/HomeTab';
 import CategoriesTab from './components/CategoriesTab';
 import MapView from './components/MapView';
@@ -18,8 +20,31 @@ import AiChatbot from './components/AiChatbot';
 import AdminPanel from './components/AdminPanel';
 
 export default function App() {
+  // Loading/Welcome state
+  const [isLoadingApp, setIsLoadingApp] = useState(true);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+
+  useEffect(() => {
+    let current = 0;
+    const interval = setInterval(() => {
+      const increment = Math.floor(Math.random() * 20) + 12;
+      current = Math.min(current + increment, 100);
+      setLoadingProgress(current);
+      
+      if (current >= 100) {
+        clearInterval(interval);
+        const timeout = setTimeout(() => {
+          setIsLoadingApp(false);
+        }, 500);
+        return () => clearTimeout(timeout);
+      }
+    }, 120);
+    return () => clearInterval(interval);
+  }, []);
+
   // Tab control state
   const [activeTab, setActiveTab] = useState<TabType>('home');
+  const [selectedShopIdOnMap, setSelectedShopIdOnMap] = useState<string | null>(null);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
 
   // Dark/Light Mode state
@@ -233,10 +258,8 @@ export default function App() {
 
   // Click on a Shop - redirects to Map view and centers it
   const handleSelectShopOnMap = (shopId: string) => {
+    setSelectedShopIdOnMap(shopId);
     setActiveTab('map');
-    // We can handle targeting in map component via internal state
-    const mapBtn = document.getElementById(`nav-tab-map`);
-    if (mapBtn) mapBtn.click();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -252,33 +275,91 @@ export default function App() {
   const activeMerchantShop = shops[0];
   const merchantOffers = offers.filter(o => o.shopId === activeMerchantShop.id);
 
+  if (isLoadingApp) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-br from-zinc-950 via-indigo-950 to-zinc-950 text-white p-6 overflow-hidden select-none">
+        {/* Animated Background Orbs */}
+        <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-purple-500/10 rounded-full blur-3xl animate-pulse duration-4000" />
+        <div className="absolute bottom-1/4 right-1/4 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl animate-pulse duration-3000" />
+
+        <div className="relative z-10 flex flex-col items-center max-w-sm w-full text-center">
+          {/* Glowing Animated Mate Logo Container */}
+          <div className="relative mb-6">
+            <div className="absolute inset-0 bg-emerald-400/20 rounded-full blur-xl animate-ping opacity-75 duration-2000" />
+            <div className="relative w-24 h-24 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center shadow-2xl transition-all duration-300 hover:scale-105">
+              <span className="text-5xl animate-bounce">🧉</span>
+            </div>
+          </div>
+
+          {/* Elegant Display Title */}
+          <h1 className="font-display font-black text-3xl tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-white via-zinc-100 to-[#5CE1B2] uppercase leading-none">
+            Oberá
+          </h1>
+          <h2 className="font-sans font-extrabold text-sm tracking-[0.25em] text-[#5CE1B2] uppercase mt-2 mb-6">
+            En Oferta
+          </h2>
+
+          {/* Welcome Tag */}
+          <div className="mb-8 px-4 py-1 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold tracking-wider text-zinc-300 uppercase">
+            ¡BIENVENIDO! cargando descuentos...
+          </div>
+
+          {/* Premium Loading Progress Bar */}
+          <div className="w-full h-1.5 bg-zinc-900 rounded-full overflow-hidden border border-white/5 shadow-inner mb-3">
+            <div 
+              className="h-full bg-gradient-to-r from-[#5CE1B2] to-emerald-400 transition-all duration-200 ease-out rounded-full shadow-[0_0_8px_rgba(92,225,178,0.5)]"
+              style={{ width: `${loadingProgress}%` }}
+            />
+          </div>
+
+          {/* Counter percent */}
+          <span className="font-mono text-xs text-[#5CE1B2] font-semibold animate-pulse">
+            {loadingProgress}%
+          </span>
+        </div>
+
+        {/* Footer info */}
+        <div className="absolute bottom-8 text-center flex flex-col gap-1 z-10">
+          <p className="text-[10px] text-zinc-500 font-extrabold tracking-widest uppercase">
+            Plataforma PWA v1.2
+          </p>
+          <p className="text-[9px] text-zinc-600 font-bold uppercase tracking-wider">
+            Desarrollado y Optimizado por APS Developer
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (userRole === null) {
     return <LoginScreen onLogin={handleLogin} />;
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 pb-20 flex flex-col justify-between transition-colors">
+    <div className={`min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-800 dark:text-zinc-100 flex flex-col justify-between transition-colors ${activeTab === 'home' && !searchQuery ? 'pb-16 md:pb-0' : 'pb-20'}`}>
       
       {/* Super Prominent APS DEVELOPER Premium Header Banner */}
-      <div className="bg-gradient-to-r from-[#2B0E67] via-[#5CE1B2] to-[#1e074d] text-white py-2 px-4 shadow-sm select-none relative overflow-hidden transition-all duration-300 border-b border-indigo-950/20">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2.5">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-2.5 w-2.5 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-            </span>
-            <p className="text-[11px] sm:text-xs font-sans font-black tracking-wide uppercase">
-              Plataforma Desarrollada y Optimizada por <span className="text-[#5CE1B2] font-black underline decoration-[#5CE1B2]/50 hover:text-white transition-colors">APS DEVELOPER</span>
-            </p>
+      <div className={activeTab === 'home' && !searchQuery ? 'hidden md:block' : 'block'}>
+        <div className="bg-gradient-to-r from-[#2B0E67] via-[#5CE1B2] to-[#1e074d] text-white py-2 px-4 shadow-sm select-none relative overflow-hidden transition-all duration-300 border-b border-indigo-950/20">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <p className="text-[11px] sm:text-xs font-sans font-black tracking-wide uppercase">
+                Plataforma Desarrollada y Optimizada por <span className="text-[#5CE1B2] font-black underline decoration-[#5CE1B2]/50 hover:text-white transition-colors">APS DEVELOPER</span>
+              </p>
+            </div>
+            <a
+              href="https://aps-web-tau.vercel.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-white/15 hover:bg-white/25 active:scale-95 text-white font-extrabold text-[10px] sm:text-[11px] uppercase tracking-wider px-3 py-1 rounded-xl transition-all flex items-center gap-1.5 shrink-0 border border-white/20 shadow-xs"
+            >
+              Visitar Web Oficial <ExternalLink className="w-3.5 h-3.5 text-[#5CE1B2]" />
+            </a>
           </div>
-          <a
-            href="https://aps-web-tau.vercel.app/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-white/15 hover:bg-white/25 active:scale-95 text-white font-extrabold text-[10px] sm:text-[11px] uppercase tracking-wider px-3 py-1 rounded-xl transition-all flex items-center gap-1.5 shrink-0 border border-white/20 shadow-xs"
-          >
-            Visitar Web Oficial <ExternalLink className="w-3.5 h-3.5 text-[#5CE1B2]" />
-          </a>
         </div>
       </div>
       
@@ -291,44 +372,25 @@ export default function App() {
       )}
 
       {/* Main Top Header */}
-      <Header
-        notifications={notifications}
-        onMarkAsRead={handleMarkAsRead}
-        onClearAll={handleClearNotifications}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        onSelectOfferByTitle={handleSelectOfferByTitle}
-        userRole={userRole}
-        onLogout={handleLogout}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        darkMode={darkMode}
-        onToggleDarkMode={() => setDarkMode(!darkMode)}
-      />
-
-      {/* Hero Accent Banner on Home only */}
-      {activeTab === 'home' && !searchQuery && (
-        <div className="bg-zinc-900 dark:bg-zinc-900 text-white py-4 px-6 border-b border-zinc-800 dark:border-zinc-800 shadow-xs transition-colors">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl animate-pulse shrink-0">🧉</span>
-              <div>
-                <h2 className="font-display font-black text-sm sm:text-base leading-tight tracking-tight">¡Oberá en Oferta v1.2 PWA!</h2>
-                <p className="text-xs text-zinc-300 font-medium">Buscá descuentos locales y presentá tus cupones QR sin consumir datos móviles.</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => alert('¡Para instalar, tocá en los tres puntos de tu navegador (Opciones) y luego en "Instalar Aplicación" o "Agregar a la pantalla principal"!')} 
-              className="bg-white text-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 hover:bg-zinc-100 font-bold text-xs uppercase px-4 py-2 rounded-xl transition-all shadow-md shrink-0 cursor-pointer"
-            >
-              Instalar PWA
-            </button>
-          </div>
-        </div>
-      )}
+      <div className={activeTab === 'home' && !searchQuery ? 'hidden md:block' : 'block'}>
+        <Header
+          notifications={notifications}
+          onMarkAsRead={handleMarkAsRead}
+          onClearAll={handleClearNotifications}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          onSelectOfferByTitle={handleSelectOfferByTitle}
+          userRole={userRole}
+          onLogout={handleLogout}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          darkMode={darkMode}
+          onToggleDarkMode={() => setDarkMode(!darkMode)}
+        />
+      </div>
 
       {/* Primary Container View */}
-      <main className="flex-1 py-8">
+      <main className={`flex-1 ${activeTab === 'home' && !searchQuery ? 'py-0' : 'py-8'}`}>
         
         {/* If Search Query is active, show search results panel instead of normal tab content */}
         {searchQuery ? (
@@ -390,6 +452,18 @@ export default function App() {
           /* Normal Tab Router */
           <>
             {activeTab === 'home' && (
+              <InicioTab
+                offers={offers}
+                shops={shops}
+                onOpenOffer={(offer) => setSelectedDetailOffer(offer)}
+                onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
+                onSelectCategoryStory={handleSelectCategoryStory}
+                onSelectShopOnMap={handleSelectShopOnMap}
+                setActiveTab={setActiveTab}
+              />
+            )}
+
+            {activeTab === 'feed' && (
               <HomeTab
                 offers={offers}
                 shops={shops}
@@ -397,6 +471,10 @@ export default function App() {
                 onOpenOffer={(offer) => setSelectedDetailOffer(offer)}
                 onSelectCategoryStory={handleSelectCategoryStory}
                 onSelectShopOnMap={handleSelectShopOnMap}
+                darkMode={darkMode}
+                onToggleDarkMode={() => setDarkMode(!darkMode)}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
               />
             )}
 
@@ -405,6 +483,7 @@ export default function App() {
                 offers={offers}
                 shops={shops}
                 onOpenOffer={(offer) => setSelectedDetailOffer(offer)}
+                onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
                 selectedCategory={selectedCategory}
                 setSelectedCategory={setSelectedCategory}
               />
@@ -415,6 +494,7 @@ export default function App() {
                 shops={shops}
                 offers={offers}
                 onSelectOffer={(offer) => setSelectedDetailOffer(offer)}
+                initialSelectedShopId={selectedShopIdOnMap}
               />
             )}
 

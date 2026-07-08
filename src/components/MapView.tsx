@@ -1,27 +1,92 @@
-import React, { useState } from 'react';
-import { MapPin, Navigation, Info, Store, Compass, Eye, Filter, CheckCircle, ShoppingBag, ArrowRight } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  MapPin, 
+  Navigation, 
+  Info, 
+  Store, 
+  Compass, 
+  Eye, 
+  Filter, 
+  CheckCircle, 
+  ShoppingBag, 
+  ArrowRight,
+  Sparkles,
+  Layers,
+  Map as MapIcon,
+  Sun,
+  Moon,
+  Compass as CompassIcon
+} from 'lucide-react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { Shop, Offer } from '../types';
+import ShopLogo from './ShopLogo';
 
 interface MapViewProps {
   shops: Shop[];
   offers: Offer[];
   onSelectOffer: (offer: Offer) => void;
+  initialSelectedShopId?: string | null;
 }
 
-export default function MapView({ shops, offers, onSelectOffer }: MapViewProps) {
-  const [selectedShopId, setSelectedShopId] = useState<string | null>('shop-1');
+// Real-world coordinates of stores in Oberá, Misiones, Argentina
+const REAL_COORDINATES: Record<string, { lat: number; lng: number }> = {
+  'shop-1': { lat: -27.484224, lng: -55.120531 }, // Yerba Mate & Delicias Misioneras - Av. Sarmiento 450
+  'shop-2': { lat: -27.486214, lng: -55.118811 }, // Misiones Style - Av. Libertad 120
+  'shop-3': { lat: -27.489512, lng: -55.115201 }, // Super El Condor - Av. Italia 890
+  'shop-4': { lat: -27.485633, lng: -55.119312 }, // Electro Oberá - Plaza San Martin (Center)
+  'shop-5': { lat: -27.483011, lng: -55.122045 }, // Heladeria Polar - Av. Sarmiento 210
+  'shop-6': { lat: -27.487512, lng: -55.116521 }, // Calzados Carhue - Av. Libertad 340
+};
+
+const getShopCoordinates = (shop: Shop): { lat: number; lng: number } => {
+  const parseCoordinate = (val: any): number | undefined => {
+    if (val === undefined || val === null) return undefined;
+    const cleanStr = String(val).trim().replace(',', '.');
+    const parsed = parseFloat(cleanStr);
+    return isNaN(parsed) ? undefined : parsed;
+  };
+
+  const lat = parseCoordinate(shop.latitude);
+  const lng = parseCoordinate(shop.longitude);
+
+  if (lat !== undefined && lng !== undefined) {
+    return { lat, lng };
+  }
+  if (REAL_COORDINATES[shop.id]) {
+    return REAL_COORDINATES[shop.id];
+  }
+  // Fallback: Generate a deterministic offset based on shop.id numeric value near Oberá center
+  const idNum = parseInt(shop.id.replace(/\D/g, '') || '0') || 1;
+  const latOffset = ((idNum % 200) - 100) * 0.00012;
+  const lngOffset = ((idNum % 130) - 65) * 0.00012;
+  return { lat: -27.4856 + latOffset, lng: -55.1193 + lngOffset };
+};
+
+type MapTheme = 'voyager' | 'positron' | 'dark';
+
+export default function MapView({ shops, offers, onSelectOffer, initialSelectedShopId }: MapViewProps) {
+  const [selectedShopId, setSelectedShopId] = useState<string | null>(initialSelectedShopId || 'shop-1');
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [mapCategory, setMapCategory] = useState<string>('Todos');
+  
+  // Default map theme based on HTML dark class, otherwise Voyager
+  const [mapTheme, setMapTheme] = useState<MapTheme>(() => {
+    const isSystemDark = document.documentElement.classList.contains('dark');
+    return isSystemDark ? 'dark' : 'voyager';
+  });
 
-  // Realistic Oberá coordinates adapted to a grid layout on a 100% responsive canvas
-  const shopCoordinates: Record<string, { x: number; y: number }> = {
-    'shop-1': { x: 42, y: 35 }, // Yerba Mate & Delicias - Av. Sarmiento
-    'shop-2': { x: 58, y: 48 }, // Misiones Style - Av. Libertad
-    'shop-3': { x: 32, y: 65 }, // Super El Condor - Av. Italia
-    'shop-4': { x: 50, y: 50 }, // Electro Oberá - Plaza San Martin (Center)
-    'shop-5': { x: 44, y: 22 }, // Heladeria Polar - Av. Sarmiento
-    'shop-6': { x: 62, y: 55 }, // Calzados Carhue - Av. Libertad
-  };
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const markersRef = useRef<Record<string, L.Marker>>({});
+
+  // Sync initialSelectedShopId if it changes externally
+  useEffect(() => {
+    if (initialSelectedShopId) {
+      setSelectedShopId(initialSelectedShopId);
+    }
+  }, [initialSelectedShopId]);
 
   const filteredShops = shops.filter(shop => {
     if (onlyOpen && !shop.isOpen) return false;
@@ -32,15 +97,160 @@ export default function MapView({ shops, offers, onSelectOffer }: MapViewProps) 
   const selectedShop = shops.find(s => s.id === selectedShopId);
   const selectedShopOffers = offers.filter(o => o.shopId === selectedShopId);
 
-  const getPinColor = (category: string) => {
+  const getCategoryColor = (category: string) => {
     switch (category) {
-      case 'Gastronomía': return 'bg-orange-500 shadow-orange-500/30 text-white';
-      case 'Indumentaria': return 'bg-red-500 shadow-red-500/30 text-white';
-      case 'Supermercados': return 'bg-emerald-500 shadow-emerald-500/30 text-white';
-      case 'Electro': return 'bg-blue-500 shadow-blue-500/30 text-white';
-      default: return 'bg-slate-500 shadow-slate-500/30 text-white';
+      case 'Gastronomía': return '#f97316'; // Orange
+      case 'Indumentaria': return '#ef4444'; // Red
+      case 'Supermercados': return '#10b981'; // Emerald
+      case 'Electro': return '#3b82f6'; // Blue
+      default: return '#64748b'; // Slate
     }
   };
+
+  // 1. Initialize map (runs once)
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    let initialCenter = { lat: -27.4856, lng: -55.1193 };
+    if (selectedShopId) {
+      const targetShop = shops.find(s => s.id === selectedShopId);
+      if (targetShop) {
+        initialCenter = getShopCoordinates(targetShop);
+      }
+    }
+
+    // Create Map
+    const map = L.map(mapContainerRef.current, {
+      center: [initialCenter.lat, initialCenter.lng],
+      zoom: 15,
+      zoomControl: false,
+      scrollWheelZoom: true
+    });
+
+    mapRef.current = map;
+
+    // Add standard zoom control on the bottom right
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // Clean up on component unmount
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  // 2. Manage tile layer when mapTheme changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Remove old tile layer
+    if (tileLayerRef.current) {
+      tileLayerRef.current.remove();
+    }
+
+    let tileUrl = '';
+    let attribution = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>';
+
+    switch (mapTheme) {
+      case 'dark':
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+        break;
+      case 'positron':
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+        break;
+      case 'voyager':
+      default:
+        tileUrl = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        break;
+    }
+
+    const tileLayer = L.tileLayer(tileUrl, { attribution });
+    tileLayer.addTo(map);
+    tileLayerRef.current = tileLayer;
+  }, [mapTheme]);
+
+  // 3. Sync Markers reactively to filteredShops and selectedShopId changes
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Clear previous markers
+    Object.keys(markersRef.current).forEach(key => {
+      markersRef.current[key]?.remove();
+    });
+    markersRef.current = {};
+
+    filteredShops.forEach(shop => {
+      const coord = getShopCoordinates(shop);
+
+      const isSelected = selectedShopId === shop.id;
+      const color = getCategoryColor(shop.category);
+
+      const isUrl = shop.logo && (
+        shop.logo.startsWith('http://') || 
+        shop.logo.startsWith('https://') || 
+        shop.logo.startsWith('/') || 
+        shop.logo.startsWith('data:image')
+      );
+
+      const logoContentHtml = isUrl 
+        ? `<img src="${shop.logo}" class="w-full h-full object-cover rounded-2xl" alt="${shop.name}" referrerPolicy="no-referrer" />`
+        : `<span class="text-lg filter drop-shadow-xs select-none">${shop.logo || '🏪'}</span>`;
+
+      // Create beautiful custom HTML DivIcon
+      const iconHtml = `
+        <div class="relative flex flex-col items-center" style="transform: translate(0, 0);">
+          <div class="flex items-center justify-center w-10 h-10 rounded-2xl border-2 border-white dark:border-zinc-900 shadow-md transition-all duration-300 ${
+            isSelected 
+              ? 'scale-120 ring-4 ring-emerald-400/40 animate-bounce' 
+              : 'hover:scale-110'
+          }" style="background-color: ${color}; color: white; overflow: hidden;">
+            ${logoContentHtml}
+          </div>
+          <!-- Pin Pointer -->
+          <div class="w-3 h-3 rotate-45 border-r border-b border-white dark:border-zinc-900 -mt-2 shadow-xs transition-colors" style="background-color: ${color};"></div>
+          
+          <!-- Subtle Floating Name Tag for Selected -->
+          ${isSelected ? `
+            <div class="absolute top-11 bg-zinc-950/90 dark:bg-zinc-900/95 text-white text-[9px] font-black px-2 py-0.5 rounded-md whitespace-nowrap shadow-md border border-white/10">
+              ${shop.name}
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      const customIcon = L.divIcon({
+        html: iconHtml,
+        className: 'custom-leaflet-marker-wrapper',
+        iconSize: [40, 40],
+        iconAnchor: [20, 40]
+      });
+
+      const marker = L.marker([coord.lat, coord.lng], { icon: customIcon })
+        .addTo(map)
+        .on('click', () => {
+          setSelectedShopId(shop.id);
+        });
+
+      markersRef.current[shop.id] = marker;
+    });
+  }, [filteredShops, selectedShopId]);
+
+  // 4. Smooth map pan to selected shop coordinate
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !selectedShopId) return;
+
+    const targetShop = shops.find(s => s.id === selectedShopId);
+    if (targetShop) {
+      const coord = getShopCoordinates(targetShop);
+      map.setView([coord.lat, coord.lng], 16, {
+        animate: true,
+        duration: 0.8
+      });
+    }
+  }, [selectedShopId, shops]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-24 transition-colors">
@@ -49,20 +259,60 @@ export default function MapView({ shops, offers, onSelectOffer }: MapViewProps) 
       <div className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800/80 rounded-3xl p-4 sm:p-5 shadow-xs">
         <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
           <div className="flex items-center gap-2.5 self-start sm:self-center">
-            <Compass className="w-5 h-5 text-brand-orange dark:text-indigo-400 animate-spin-slow" />
+            <Compass className="w-5 h-5 text-emerald-500 animate-spin-slow shrink-0" />
             <div>
-              <h3 className="font-display font-bold text-slate-900 dark:text-zinc-100 text-sm">Geolocalizador de Comercios</h3>
-              <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold">Explorá ofertas de Oberá caminando la ciudad</p>
+              <div className="flex items-center gap-1.5">
+                <h3 className="font-display font-black text-slate-900 dark:text-zinc-100 text-sm">
+                  Mapa Interactivo Local (Leaflet)
+                </h3>
+                <span className="bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 text-[9px] font-black uppercase px-2 py-0.5 rounded-full">
+                  ● 100% GRATIS
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold">
+                Navegá de forma libre y rápida. Sin anuncios, rastreadores ni claves de API.
+              </p>
             </div>
           </div>
 
-          <div className="flex gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            {/* Map Theme Buttons */}
+            <div className="flex items-center bg-slate-50 dark:bg-zinc-800 p-1 rounded-xl border border-slate-150 dark:border-zinc-700">
+              <button
+                onClick={() => setMapTheme('voyager')}
+                className={`p-1 px-2.5 rounded-lg text-[9px] font-extrabold uppercase transition-all flex items-center gap-1 cursor-pointer ${
+                  mapTheme === 'voyager' ? 'bg-white dark:bg-zinc-700 shadow-xs text-brand-orange' : 'text-slate-400'
+                }`}
+                title="Cálido y Colorido"
+              >
+                🧉 Color
+              </button>
+              <button
+                onClick={() => setMapTheme('positron')}
+                className={`p-1 px-2.5 rounded-lg text-[9px] font-extrabold uppercase transition-all flex items-center gap-1 cursor-pointer ${
+                  mapTheme === 'positron' ? 'bg-white dark:bg-zinc-700 shadow-xs text-emerald-500' : 'text-slate-400'
+                }`}
+                title="Claro Minimalista"
+              >
+                <Sun className="w-3 h-3" /> Claro
+              </button>
+              <button
+                onClick={() => setMapTheme('dark')}
+                className={`p-1 px-2.5 rounded-lg text-[9px] font-extrabold uppercase transition-all flex items-center gap-1 cursor-pointer ${
+                  mapTheme === 'dark' ? 'bg-white dark:bg-zinc-700 shadow-xs text-indigo-400' : 'text-slate-400'
+                }`}
+                title="Noche de Misiones"
+              >
+                <Moon className="w-3 h-3" /> Oscuro
+              </button>
+            </div>
+
             <button
               onClick={() => setOnlyOpen(!onlyOpen)}
-              className={`flex-1 sm:flex-initial px-3.5 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 ${
                 onlyOpen
                   ? 'bg-green-500 text-white border-green-500'
-                  : 'bg-slate-50 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border-slate-200/60 dark:border-zinc-700 hover:bg-slate-100 dark:hover:bg-zinc-700'
+                  : 'bg-slate-50 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border-slate-200/60 dark:border-zinc-700 hover:bg-slate-100'
               }`}
             >
               <CheckCircle className="w-3.5 h-3.5" /> Abiertos
@@ -71,7 +321,7 @@ export default function MapView({ shops, offers, onSelectOffer }: MapViewProps) 
             <select
               value={mapCategory}
               onChange={(e) => setMapCategory(e.target.value)}
-              className="flex-1 sm:flex-initial px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-50 dark:bg-zinc-800 border border-slate-200/60 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 focus:outline-hidden cursor-pointer"
+              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-50 dark:bg-zinc-800 border border-slate-200/60 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 focus:outline-hidden cursor-pointer"
             >
               <option value="Todos">Todas las Categorías</option>
               <option value="Gastronomía">Gastronomía</option>
@@ -83,98 +333,16 @@ export default function MapView({ shops, offers, onSelectOffer }: MapViewProps) 
         </div>
       </div>
 
-      {/* Stylized Vector Map Canvas */}
-      <div className="relative w-full aspect-[4/3] md:aspect-[16/9] bg-[#faf6f0] dark:bg-zinc-950 border border-orange-100/50 dark:border-zinc-800/80 rounded-3xl overflow-hidden shadow-inner flex flex-col justify-end transition-colors duration-300">
-        {/* Red dirt clay accent at top to represent Tierra Colorada of Misiones */}
-        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-brand-orange via-brand-red to-orange-400 dark:from-indigo-600 dark:to-cyan-400" />
+      {/* Map container - standard Leaflet div */}
+      <div className="relative w-full aspect-[4/3] md:aspect-[16/9] bg-[#faf6f0] dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-sm flex flex-col justify-end">
+        {/* Colorful top border strip */}
+        <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-emerald-500 via-[#5CE1B2] to-teal-400 z-20" />
         
-        {/* Custom Stylized Map Grid Overlay */}
-        <svg className="absolute inset-0 w-full h-full text-orange-200/25 dark:text-zinc-800/40 pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id="grid-map" width="24" height="24" patternUnits="userSpaceOnUse">
-              <path d="M 24 0 L 0 0 0 24" fill="none" stroke="currentColor" strokeWidth="0.5" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#grid-map)" />
+        {/* Leaflet DOM container */}
+        <div ref={mapContainerRef} className="w-full h-full z-10" />
 
-          {/* Draw stylized major avenues representing Oberá streets */}
-          {/* Avenida Sarmiento (diagonal running left to right) */}
-          <line x1="10%" y1="10%" x2="90%" y2="90%" stroke="currentColor" strokeWidth="18" strokeLinecap="round" className="text-amber-100/70 dark:text-zinc-900/90" />
-          <line x1="10%" y1="10%" x2="90%" y2="90%" stroke="currentColor" strokeWidth="12" strokeLinecap="round" strokeDasharray="4 4" className="text-white dark:text-zinc-850/50" />
-          
-          {/* Avenida Libertad (intersecting diagonal) */}
-          <line x1="90%" y1="10%" x2="10%" y2="90%" stroke="currentColor" strokeWidth="18" strokeLinecap="round" className="text-amber-100/70 dark:text-zinc-900/90" />
-          <line x1="90%" y1="10%" x2="10%" y2="90%" stroke="currentColor" strokeWidth="12" strokeLinecap="round" strokeDasharray="4 4" className="text-white dark:text-zinc-850/50" />
-
-          {/* Avenida Italia */}
-          <line x1="10%" y1="65%" x2="90%" y2="65%" stroke="currentColor" strokeWidth="14" strokeLinecap="round" className="text-amber-100/70 dark:text-zinc-900/90" />
-          <line x1="10%" y1="65%" x2="90%" y2="65%" stroke="currentColor" strokeWidth="8" strokeLinecap="round" className="text-white dark:text-zinc-850/50" />
-        </svg>
-
-        {/* Major Landmarks */}
-        {/* Central Hub: Plaza San Martín */}
-        <div className="absolute left-[50%] top-[50%] -translate-x-1/2 -translate-y-1/2 flex flex-col items-center">
-          <div className="h-10 w-10 rounded-full bg-emerald-100 dark:bg-emerald-950/80 border-2 border-emerald-400 flex items-center justify-center text-sm shadow-md animate-pulse">
-            🌳
-          </div>
-          <span className="text-[9px] bg-slate-950/75 dark:bg-zinc-900/95 text-white px-2 py-0.5 rounded-full font-bold mt-1 shadow-xs tracking-wider uppercase">
-            Plaza San Martín
-          </span>
-        </div>
-
-        {/* Tourist landmark 1: Jardin de los Pajaros */}
-        <div className="absolute left-[15%] top-[15%] flex flex-col items-center">
-          <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-950/80 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-xs shadow-xs">
-            🐦
-          </div>
-          <span className="text-[8px] bg-blue-900/70 dark:bg-blue-950 text-white px-1.5 py-0.5 rounded-md font-bold mt-0.5 uppercase tracking-wide">
-            Jardín Pájaros
-          </span>
-        </div>
-
-        {/* Tourist landmark 2: Parque de las Naciones */}
-        <div className="absolute right-[12%] bottom-[15%] flex flex-col items-center">
-          <div className="h-8 w-8 rounded-full bg-amber-50 dark:bg-amber-950/80 border border-amber-300 dark:border-amber-800 flex items-center justify-center text-xs shadow-xs">
-            🏰
-          </div>
-          <span className="text-[8px] bg-amber-900/70 dark:bg-amber-950 text-white px-1.5 py-0.5 rounded-md font-bold mt-0.5 uppercase tracking-wide">
-            Parque Naciones
-          </span>
-        </div>
-
-        {/* Interactive Shop Pins */}
-        {filteredShops.map((shop) => {
-          const coord = shopCoordinates[shop.id] || { x: 50, y: 50 };
-          const isSelected = selectedShopId === shop.id;
-          return (
-            <button
-              key={shop.id}
-              onClick={() => setSelectedShopId(shop.id)}
-              className="absolute group transition-transform hover:scale-110 duration-200 cursor-pointer"
-              style={{ left: `${coord.x}%`, top: `${coord.y}%` }}
-            >
-              <div className="flex flex-col items-center -translate-x-1/2 -translate-y-1/2">
-                <div className={`p-1.5 rounded-xl border-2 border-white dark:border-zinc-900 shadow-lg flex items-center justify-center transition-all ${
-                  isSelected ? 'scale-120 ring-4 ring-brand-orange/35' : ''
-                } ${getPinColor(shop.category)}`}>
-                  <span className="text-sm">{shop.logo}</span>
-                </div>
-                {/* Micro pointer triangle */}
-                <div className={`w-2 h-2 rotate-45 border-r border-b border-white dark:border-zinc-900 bg-current -mt-1 ${
-                  isSelected ? 'text-brand-orange' : 'text-slate-600 dark:text-zinc-500'
-                }`} />
-
-                {/* Hover bubble */}
-                <div className="opacity-0 group-hover:opacity-100 absolute bottom-10 bg-slate-900 dark:bg-zinc-800 text-white text-[9px] font-bold px-2.5 py-1 rounded-lg pointer-events-none transition-opacity whitespace-nowrap shadow-md z-30">
-                  {shop.name}
-                </div>
-              </div>
-            </button>
-          );
-        })}
-
-        {/* Compass / Map Legend overlay */}
-        <div className="absolute left-3 top-3 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md p-3 rounded-2xl border border-slate-100 dark:border-zinc-800 shadow-sm text-[9px] font-bold text-slate-600 dark:text-zinc-400 space-y-1">
+        {/* Legend Map overlay */}
+        <div className="absolute left-3 bottom-3 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md p-3 rounded-2xl border border-slate-100 dark:border-zinc-800/80 shadow-md text-[9px] font-black text-slate-600 dark:text-zinc-400 space-y-1 z-20">
           <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-500" /> Gastronomía</div>
           <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500" /> Indumentaria</div>
           <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Supermercados</div>
@@ -184,12 +352,12 @@ export default function MapView({ shops, offers, onSelectOffer }: MapViewProps) 
 
       {/* Selected Shop Drawer */}
       {selectedShop && (
-        <div className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 rounded-3xl p-5 shadow-md space-y-4 animate-in slide-in-from-bottom-3 duration-200">
+        <div className="bg-white dark:bg-zinc-900 border border-slate-150 dark:border-zinc-800/80 rounded-3xl p-5 shadow-sm space-y-4 animate-in slide-in-from-bottom-3 duration-250">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <span className="text-3xl p-2.5 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 shadow-inner rounded-2xl">
-                {selectedShop.logo}
-              </span>
+              <div className="bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 shadow-inner rounded-2xl p-2.5 flex items-center justify-center w-16 h-16 shrink-0 overflow-hidden">
+                <ShopLogo logo={selectedShop.logo} className="text-3xl" fallbackSize="w-12 h-12" />
+              </div>
               <div>
                 <h4 className="font-display font-extrabold text-slate-900 dark:text-zinc-50 text-base">{selectedShop.name}</h4>
                 <div className="flex flex-wrap items-center gap-2 mt-0.5">
@@ -200,7 +368,7 @@ export default function MapView({ shops, offers, onSelectOffer }: MapViewProps) 
                   </span>
                   <span className="text-slate-200 dark:text-zinc-700">•</span>
                   <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ${
-                    selectedShop.isOpen ? 'text-green-600 bg-green-50 dark:bg-green-950/30 dark:text-green-400' : 'text-slate-500 bg-slate-50 dark:bg-zinc-800'
+                    selectedShop.isOpen ? 'text-green-600 bg-green-55/15 dark:text-green-400' : 'text-slate-500 bg-slate-50 dark:bg-zinc-800'
                   }`}>
                     {selectedShop.isOpen ? 'Abierto' : 'Cerrado'}
                   </span>
@@ -218,8 +386,8 @@ export default function MapView({ shops, offers, onSelectOffer }: MapViewProps) 
             </a>
           </div>
 
-          <div className="border-t border-slate-50 dark:border-zinc-800/80 pt-4">
-            <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase block mb-3.5">Ofertas Disponibles en este local</span>
+          <div className="border-t border-slate-100 dark:border-zinc-800/80 pt-4">
+            <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-bold uppercase block mb-3.5">Ofertas en este local</span>
             
             {selectedShopOffers.length === 0 ? (
               <p className="text-xs text-slate-400 italic">No hay ofertas publicadas para este local actualmente.</p>
@@ -229,17 +397,17 @@ export default function MapView({ shops, offers, onSelectOffer }: MapViewProps) 
                   <div
                     key={offer.id}
                     onClick={() => onSelectOffer(offer)}
-                    className="p-3 bg-slate-50 dark:bg-zinc-950 hover:bg-indigo-50/10 dark:hover:bg-zinc-800 border border-slate-100 dark:border-zinc-800 rounded-2xl flex items-center justify-between gap-3 cursor-pointer transition-colors group"
+                    className="p-3 bg-slate-50 dark:bg-zinc-950 hover:bg-[#5CE1B2]/5 dark:hover:bg-zinc-800 border border-slate-100 dark:border-zinc-800 rounded-2xl flex items-center justify-between gap-3 cursor-pointer transition-colors group"
                   >
                     <div className="flex items-center gap-3">
                       <img
                         src={offer.image}
                         alt={offer.title}
-                        className="w-12 h-12 object-cover rounded-xl shrink-0 border border-slate-100 dark:border-zinc-800"
+                        className="w-12 h-12 object-cover rounded-xl shrink-0 border border-slate-100 dark:border-zinc-850"
                         referrerPolicy="no-referrer"
                       />
                       <div>
-                        <h5 className="text-xs font-bold text-slate-800 dark:text-zinc-200 leading-snug group-hover:text-brand-orange dark:group-hover:text-indigo-400 transition-colors">
+                        <h5 className="text-xs font-bold text-slate-800 dark:text-zinc-200 leading-snug group-hover:text-emerald-500 dark:group-hover:text-emerald-450 transition-colors">
                           {offer.title}
                         </h5>
                         <div className="flex items-center gap-1.5 mt-1">
@@ -253,7 +421,7 @@ export default function MapView({ shops, offers, onSelectOffer }: MapViewProps) 
                       </div>
                     </div>
 
-                    <span className="p-1.5 bg-white dark:bg-zinc-900 text-slate-400 group-hover:text-brand-orange dark:group-hover:text-indigo-400 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-xs transition-colors shrink-0">
+                    <span className="p-1.5 bg-white dark:bg-zinc-900 text-slate-400 group-hover:text-emerald-500 dark:group-hover:text-emerald-450 rounded-xl border border-slate-100 dark:border-zinc-800 shadow-xs transition-colors shrink-0">
                       <ArrowRight className="w-3.5 h-3.5" />
                     </span>
                   </div>
@@ -263,6 +431,7 @@ export default function MapView({ shops, offers, onSelectOffer }: MapViewProps) 
           </div>
         </div>
       )}
+
     </div>
   );
 }

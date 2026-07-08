@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, Mail, QrCode, Settings, Shield, Store, ChevronRight, CreditCard, HelpCircle, Info, Sparkles, LogOut, Check, ArrowRight } from 'lucide-react';
 import { Offer, Shop } from '../types';
+import ShopLogo from './ShopLogo';
 
 interface MyProfileTabProps {
   offers: Offer[];
@@ -140,8 +141,8 @@ export default function MyProfileTab({
                           <h4 className="text-xs font-bold text-slate-800 dark:text-zinc-200 line-clamp-1 group-hover:text-brand-orange dark:group-hover:text-indigo-400 transition-colors">
                             {offer.title}
                           </h4>
-                          <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold block mt-0.5 truncate">
-                            {shop?.logo} {shop?.name}
+                          <span className="text-[10px] text-slate-400 dark:text-zinc-500 font-semibold flex items-center gap-1 mt-0.5 truncate">
+                            <ShopLogo logo={shop?.logo} className="text-xs" fallbackSize="w-4 h-4 rounded-md" /> {shop?.name}
                           </span>
                         </div>
                       </div>

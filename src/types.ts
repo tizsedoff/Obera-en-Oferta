@@ -8,6 +8,8 @@ export interface Shop {
   address: string;
   phone: string;
   rating: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface Offer {
@@ -36,4 +38,4 @@ export interface Notification {
   type: 'flash' | 'coupon' | 'new_shop';
 }
 
-export type TabType = 'home' | 'categories' | 'map' | 'myshop' | 'myprofile';
+export type TabType = 'home' | 'feed' | 'categories' | 'map' | 'myshop' | 'myprofile';

@@ -52,6 +52,7 @@ export default function Header({
 
   const navItems = [
     { id: 'home' as TabType, label: 'Inicio', icon: Home },
+    { id: 'feed' as TabType, label: 'Feed 🔥', icon: Sparkles },
     { id: 'categories' as TabType, label: 'Categorías', icon: Grid },
     { id: 'map' as TabType, label: 'Mapa', icon: Map },
     ...(userRole === 'merchant'
@@ -61,7 +62,7 @@ export default function Header({
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-white dark:bg-zinc-900/90 backdrop-blur-md border-b border-slate-100 dark:border-zinc-800 shadow-xs px-4 py-3.5 transition-colors">
+    <header className="sticky top-0 z-40 bg-white dark:bg-zinc-900/90 backdrop-blur-md border-b border-slate-100 dark:border-zinc-800 shadow-xs px-4 py-2 transition-colors">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
         
         {/* Logo and Brand */}
