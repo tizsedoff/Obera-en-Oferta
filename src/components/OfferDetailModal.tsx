@@ -24,12 +24,23 @@ export default function OfferDetailModal({ offer, shop, onClose, onOpenCoupon }:
         
         {/* Header Image section */}
         <div className="relative h-64 sm:h-72 w-full bg-slate-100 dark:bg-zinc-950">
-          <img
-            src={offer.image}
-            alt={offer.title}
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
+          {offer.mediaType === 'video' || offer.image.startsWith('data:video/') ? (
+            <video
+              src={offer.image}
+              autoPlay
+              loop
+              muted
+              playsInline
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <img
+              src={offer.image}
+              alt={offer.title}
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+            />
+          )}
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-900/30 to-transparent" />
           
           {/* Close button inside image */}

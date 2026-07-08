@@ -17,13 +17,13 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Offer, Shop } from '../types';
-import { CATEGORIES_STORY } from '../data';
+import { Offer, Shop, Category } from '../types';
 import ShopLogo from './ShopLogo';
 
 interface HomeTabProps {
   offers: Offer[];
   shops: Shop[];
+  categories: Category[];
   onOpenCoupon: (offer: Offer) => void;
   onOpenOffer: (offer: Offer) => void;
   onSelectCategoryStory: (category: string) => void;
@@ -37,6 +37,7 @@ interface HomeTabProps {
 export default function HomeTab({
   offers,
   shops,
+  categories,
   onOpenCoupon,
   onOpenOffer,
   onSelectCategoryStory,
@@ -237,7 +238,7 @@ export default function HomeTab({
             >
               Todos 🔥
             </button>
-            {CATEGORIES_STORY.map((cat) => (
+            {categories.filter(cat => cat.id !== 'all').map((cat) => (
               <button
                 key={cat.id}
                 onClick={() => setSelectedCategoryFilter(cat.id)}

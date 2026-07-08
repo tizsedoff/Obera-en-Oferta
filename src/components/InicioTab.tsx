@@ -13,13 +13,14 @@ import {
   MapPin
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { Offer, Shop } from '../types';
-import { CATEGORIES_STORY } from '../data';
+import { Offer, Shop, Category, SiteConfig } from '../types';
 import ShopLogo from './ShopLogo';
 
 interface InicioTabProps {
   offers: Offer[];
   shops: Shop[];
+  categories: Category[];
+  siteConfig: SiteConfig;
   onOpenOffer: (offer: Offer) => void;
   onOpenCoupon: (offer: Offer) => void;
   onSelectCategoryStory: (category: string) => void;
@@ -30,6 +31,8 @@ interface InicioTabProps {
 export default function InicioTab({
   offers,
   shops,
+  categories,
+  siteConfig,
   onOpenOffer,
   onOpenCoupon,
   onSelectCategoryStory,
@@ -52,16 +55,16 @@ export default function InicioTab({
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-3">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs font-black uppercase tracking-wider text-[#5CE1B2]">
-              <Sparkles className="w-3.5 h-3.5 fill-[#5CE1B2]/20 text-[#5CE1B2]" /> ¡Estás en Oberá en Oferta!
+              <Sparkles className="w-3.5 h-3.5 fill-[#5CE1B2]/20 text-[#5CE1B2]" /> ¡Estás en {siteConfig.appTitle}!
             </div>
-            <h1 className="font-display font-black text-2xl sm:text-3xl leading-tight tracking-tight">
-              Los mejores descuentos de la <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-[#5CE1B2]">Tierra Colorada</span>
+            <h1 className="font-display font-black text-2xl sm:text-3xl leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-[#5CE1B2] to-indigo-300">
+              {siteConfig.appSubtitle}
             </h1>
             <p className="text-xs sm:text-sm text-zinc-350 leading-relaxed max-w-xl font-medium">
               Explorá cupones gratis, ofertas flash de comercios locales y recorré la ciudad interactiva geolocalizada en tiempo real. ¡Todo listo para ahorrar!
             </p>
           </div>
-          <span className="text-5xl sm:text-6xl self-end md:self-center select-none animate-bounce">🧉</span>
+          <span className="text-5xl sm:text-6xl self-end md:self-center select-none animate-bounce">{siteConfig.welcomeEmoji}</span>
         </div>
       </div>
 
@@ -73,7 +76,7 @@ export default function InicioTab({
           </h3>
         </div>
         <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
-          {CATEGORIES_STORY.map((cat) => {
+          {categories.map((cat) => {
             const count = cat.id === 'all' 
               ? offers.length 
               : offers.filter(o => o.category === cat.id).length;

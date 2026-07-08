@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { X, Plus, Edit, Trash2, KeyRound, Save, CheckCircle, AlertTriangle, Building, Tag, Compass, Sparkles, ExternalLink } from 'lucide-react';
-import { Shop, Offer, Notification } from '../types';
+import { X, Plus, Edit, Trash2, KeyRound, Save, CheckCircle, AlertTriangle, Building, Tag, Compass, Sparkles, ExternalLink, MapPin, Map as MapIcon, Sliders, Settings, Check, RefreshCw } from 'lucide-react';
+import { Shop, Offer, Notification, Category, MapConfig, SiteConfig } from '../types';
 import ShopLogo from './ShopLogo';
 
 interface AdminPanelProps {
@@ -10,6 +10,14 @@ interface AdminPanelProps {
   onUpdateOffers: (offers: Offer[]) => void;
   notifications: Notification[];
   onUpdateNotifications: (notifs: Notification[]) => void;
+  categories: Category[];
+  onUpdateCategories: (categories: Category[]) => void;
+  zones: string[];
+  onUpdateZones: (zones: string[]) => void;
+  mapConfig: MapConfig;
+  onUpdateMapConfig: (config: MapConfig) => void;
+  siteConfig: SiteConfig;
+  onUpdateSiteConfig: (config: SiteConfig) => void;
   onClose: () => void;
 }
 
@@ -20,13 +28,21 @@ export default function AdminPanel({
   onUpdateOffers,
   notifications,
   onUpdateNotifications,
+  categories,
+  onUpdateCategories,
+  zones,
+  onUpdateZones,
+  mapConfig,
+  onUpdateMapConfig,
+  siteConfig,
+  onUpdateSiteConfig,
   onClose,
 }: AdminPanelProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   
-  const [activeTab, setActiveTab] = useState<'shops' | 'offers'>('shops');
+  const [activeTab, setActiveTab] = useState<'shops' | 'offers' | 'categories' | 'zones' | 'map' | 'site'>('shops');
   
   // Shop forms state
   const [editingShop, setEditingShop] = useState<Shop | null>(null);
@@ -60,6 +76,112 @@ export default function AdminPanel({
     qrCodeValue: '',
     isFlashSale: false
   });
+
+  // --- NEW CONFIGURATION FORM STATES & SUCCESS FLASHER STATES ---
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [categoryForm, setCategoryForm] = useState<Category>({
+    id: '',
+    name: '',
+    emoji: '⭐',
+    color: 'bg-indigo-100 text-indigo-800 border-indigo-200'
+  });
+
+  const [editingZoneIndex, setEditingZoneIndex] = useState<number | null>(null);
+  const [isAddingZone, setIsAddingZone] = useState(false);
+  const [zoneForm, setZoneForm] = useState<string>('');
+
+  const [mapForm, setMapForm] = useState<MapConfig>({ ...mapConfig });
+  const [mapSaved, setMapSaved] = useState(false);
+
+  const [siteForm, setSiteForm] = useState<SiteConfig>({ ...siteConfig });
+  const [siteSaved, setSiteSaved] = useState(false);
+
+  // handlers
+  const saveCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!categoryForm.id.trim() || !categoryForm.name.trim()) return;
+    
+    // Normalize id
+    const cleanId = categoryForm.id.trim().toLowerCase().replace(/\s+/g, '-');
+    const finalCat = { ...categoryForm, id: cleanId };
+
+    if (isAddingCategory) {
+      onUpdateCategories([...categories, finalCat]);
+    } else if (editingCategory) {
+      onUpdateCategories(categories.map(c => c.id === editingCategory.id ? finalCat : c));
+    }
+    setEditingCategory(null);
+    setIsAddingCategory(false);
+    setCategoryForm({ id: '', name: '', emoji: '⭐', color: 'bg-indigo-100 text-indigo-800 border-indigo-200' });
+  };
+
+  const startEditCategory = (cat: Category) => {
+    setEditingCategory(cat);
+    setCategoryForm(cat);
+    setIsAddingCategory(false);
+  };
+
+  const startAddCategory = () => {
+    setCategoryForm({ id: '', name: '', emoji: '⭐', color: 'bg-indigo-100 text-indigo-800 border-indigo-200' });
+    setIsAddingCategory(true);
+    setEditingCategory(null);
+  };
+
+  const deleteCategory = (id: string) => {
+    if (id === 'all') return;
+    onUpdateCategories(categories.filter(c => c.id !== id));
+  };
+
+  const saveZone = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!zoneForm.trim()) return;
+
+    if (isAddingZone) {
+      onUpdateZones([...zones, zoneForm.trim()]);
+    } else if (editingZoneIndex !== null) {
+      onUpdateZones(zones.map((z, idx) => idx === editingZoneIndex ? zoneForm.trim() : z));
+    }
+    setEditingZoneIndex(null);
+    setIsAddingZone(false);
+    setZoneForm('');
+  };
+
+  const startEditZone = (index: number) => {
+    setEditingZoneIndex(index);
+    setZoneForm(zones[index]);
+    setIsAddingZone(false);
+  };
+
+  const startAddZone = () => {
+    setZoneForm('');
+    setIsAddingZone(true);
+    setEditingZoneIndex(null);
+  };
+
+  const deleteZone = (index: number) => {
+    if (zones[index] === 'Todos') return;
+    onUpdateZones(zones.filter((_, idx) => idx !== index));
+  };
+
+  const saveMapConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    onUpdateMapConfig({
+      ...mapForm,
+      centerLat: Number(mapForm.centerLat),
+      centerLng: Number(mapForm.centerLng),
+      defaultZoom: Number(mapForm.defaultZoom)
+    });
+    setMapSaved(true);
+    setTimeout(() => setMapSaved(false), 3000);
+  };
+
+  const saveSiteConfig = (e: React.FormEvent) => {
+    e.preventDefault();
+    onUpdateSiteConfig(siteForm);
+    setSiteSaved(true);
+    setTimeout(() => setSiteSaved(false), 3000);
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -377,20 +499,48 @@ export default function AdminPanel({
         </div>
 
         {/* Tab Selection */}
-        <div className="px-6 py-2 bg-slate-50/50 dark:bg-zinc-950/50 border-b border-slate-100 dark:border-zinc-800 flex gap-2">
+        <div className="px-6 py-2 bg-slate-50/50 dark:bg-zinc-950/50 border-b border-slate-100 dark:border-zinc-800 flex gap-2 overflow-x-auto no-scrollbar shrink-0">
           <button
             onClick={() => { setActiveTab('shops'); setEditingShop(null); setIsAddingShop(false); }}
-            className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 ${activeTab === 'shops' ? 'bg-[#2B0E67] text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 shrink-0 ${activeTab === 'shops' ? 'bg-[#2B0E67] text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
           >
             <Building className="w-4 h-4" />
             Comercios ({shops.length})
           </button>
           <button
             onClick={() => { setActiveTab('offers'); setEditingOffer(null); setIsAddingOffer(false); }}
-            className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 ${activeTab === 'offers' ? 'bg-[#2B0E67] text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 shrink-0 ${activeTab === 'offers' ? 'bg-[#2B0E67] text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
           >
             <Tag className="w-4 h-4" />
             Ofertas ({offers.length})
+          </button>
+          <button
+            onClick={() => { setActiveTab('categories'); }}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 shrink-0 ${activeTab === 'categories' ? 'bg-[#2B0E67] text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
+          >
+            <Compass className="w-4 h-4" />
+            Categorías ({categories.length})
+          </button>
+          <button
+            onClick={() => { setActiveTab('zones'); }}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 shrink-0 ${activeTab === 'zones' ? 'bg-[#2B0E67] text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
+          >
+            <MapPin className="w-4 h-4" />
+            Zonas / Filtros ({zones.length})
+          </button>
+          <button
+            onClick={() => { setActiveTab('map'); setMapForm({ ...mapConfig }); }}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 shrink-0 ${activeTab === 'map' ? 'bg-[#2B0E67] text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
+          >
+            <MapIcon className="w-4 h-4" />
+            Mapa Settings
+          </button>
+          <button
+            onClick={() => { setActiveTab('site'); setSiteForm({ ...siteConfig }); }}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 shrink-0 ${activeTab === 'site' ? 'bg-[#2B0E67] text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
+          >
+            <Sparkles className="w-4 h-4" />
+            Personalizar Sitio
           </button>
         </div>
 
@@ -520,24 +670,23 @@ export default function AdminPanel({
                         onChange={(e) => setShopForm({ ...shopForm, category: e.target.value })}
                         className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
                       >
-                        <option value="Gastronomía">Gastronomía</option>
-                        <option value="Indumentaria">Indumentaria</option>
-                        <option value="Supermercados">Supermercados</option>
-                        <option value="Electro">Electrodomésticos</option>
-                        <option value="Calzados">Calzados</option>
+                        {categories.filter(cat => cat.id !== 'all').map((cat) => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
                       </select>
                     </div>
 
                     <div className="space-y-1">
                       <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Zona de Oberá</label>
-                      <input
-                        type="text"
-                        required
+                      <select
                         value={shopForm.zone}
                         onChange={(e) => setShopForm({ ...shopForm, zone: e.target.value })}
                         className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
-                        placeholder="Ej: Av. Sarmiento o Av. Libertad"
-                      />
+                      >
+                        {zones.filter(z => z !== 'Todos').map((zone) => (
+                          <option key={zone} value={zone}>{zone}</option>
+                        ))}
+                      </select>
                     </div>
 
                     <div className="space-y-1">
@@ -836,6 +985,416 @@ export default function AdminPanel({
                   </form>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* --- TAB CATEGORIAS --- */}
+          {activeTab === 'categories' && (
+            <div className="space-y-6 animate-fadeIn">
+              {!isAddingCategory && !editingCategory ? (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Listado de Categorías</span>
+                    <button
+                      onClick={startAddCategory}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                    >
+                      <Plus className="w-4 h-4" /> Agregar Categoría
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {categories.map((cat) => (
+                      <div
+                        key={cat.id}
+                        className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl flex items-center justify-between gap-4"
+                      >
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <span className="text-3xl p-2 bg-white dark:bg-zinc-900 rounded-2xl shadow-xs border border-slate-100 dark:border-zinc-800 shrink-0">
+                            {cat.emoji}
+                          </span>
+                          <div className="overflow-hidden">
+                            <h4 className="font-bold text-xs text-slate-900 dark:text-zinc-100 truncate">{cat.name}</h4>
+                            <p className="text-[10px] text-slate-450 dark:text-zinc-500 font-semibold truncate font-mono">
+                              ID: {cat.id}
+                            </p>
+                            <span className="inline-block text-[9px] px-2 py-0.5 mt-1 rounded-md bg-slate-200 text-slate-800 dark:bg-zinc-800 dark:text-zinc-300 font-bold">
+                              {cat.color}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            onClick={() => startEditCategory(cat)}
+                            className="p-2 text-indigo-650 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-zinc-850 rounded-xl transition-colors"
+                            title="Editar"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          {cat.id !== 'all' && (
+                            <button
+                              onClick={() => deleteCategory(cat.id)}
+                              className="p-2 text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-zinc-850 rounded-xl transition-colors"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="p-5 sm:p-6 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-3xl space-y-4">
+                  <div className="flex justify-between items-center pb-3 border-b border-slate-200/50 dark:border-zinc-800">
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                      <Compass className="w-5 h-5 text-indigo-500" />
+                      {isAddingCategory ? 'Agregar Nueva Categoría' : 'Editar Categoría'}
+                    </h3>
+                    <button
+                      onClick={() => { setEditingCategory(null); setIsAddingCategory(false); }}
+                      className="text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 font-bold"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+
+                  <form onSubmit={saveCategory} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">ID Único (Filtro)</label>
+                        <input
+                          type="text"
+                          required
+                          disabled={!isAddingCategory}
+                          value={categoryForm.id}
+                          onChange={(e) => setCategoryForm({ ...categoryForm, id: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none disabled:opacity-50"
+                          placeholder="Ej: gastronomia, indumentaria, electro"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Nombre Visible</label>
+                        <input
+                          type="text"
+                          required
+                          value={categoryForm.name}
+                          onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                          placeholder="Ej: Gastronomía, Indumentaria, Juguetería"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Emoji Identificador</label>
+                        <input
+                          type="text"
+                          required
+                          value={categoryForm.emoji}
+                          onChange={(e) => setCategoryForm({ ...categoryForm, emoji: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                          placeholder="Ej: 🍕, 👕, 🔌"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Clases CSS de Color</label>
+                        <input
+                          type="text"
+                          required
+                          value={categoryForm.color}
+                          onChange={(e) => setCategoryForm({ ...categoryForm, color: e.target.value })}
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                          placeholder="Ej: bg-orange-100 text-orange-800 border-orange-200"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-4 flex justify-end gap-2 border-t border-slate-200/50 dark:border-zinc-800">
+                      <button
+                        type="button"
+                        onClick={() => { setEditingCategory(null); setIsAddingCategory(false); }}
+                        className="px-5 py-2.5 bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 font-bold text-xs rounded-xl"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-xs"
+                      >
+                        <Save className="w-4 h-4" /> Guardar Categoría
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* --- TAB ZONAS --- */}
+          {activeTab === 'zones' && (
+            <div className="space-y-6 animate-fadeIn">
+              {!isAddingZone && editingZoneIndex === null ? (
+                <>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black text-slate-400 dark:text-zinc-500 uppercase tracking-widest">Listado de Zonas de Oberá</span>
+                    <button
+                      onClick={startAddZone}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                    >
+                      <Plus className="w-4 h-4" /> Agregar Zona
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {zones.map((zone, idx) => (
+                      <div
+                        key={idx}
+                        className="p-4 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-2xl flex items-center justify-between gap-4"
+                      >
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <span className="text-xl p-2 bg-white dark:bg-zinc-900 rounded-xl shadow-xs border border-slate-100 dark:border-zinc-800">
+                            📍
+                          </span>
+                          <div className="overflow-hidden">
+                            <h4 className="font-bold text-xs text-slate-900 dark:text-zinc-100 truncate">{zone}</h4>
+                            <p className="text-[10px] text-slate-450 dark:text-zinc-500 font-semibold truncate font-mono">
+                              Index: {idx}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex gap-1.5 shrink-0">
+                          <button
+                            onClick={() => startEditZone(idx)}
+                            className="p-2 text-indigo-650 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-zinc-850 rounded-xl transition-colors"
+                            title="Editar"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          {zone !== 'Todos' && (
+                            <button
+                              onClick={() => deleteZone(idx)}
+                              className="p-2 text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-zinc-850 rounded-xl transition-colors"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="p-5 sm:p-6 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-3xl space-y-4">
+                  <div className="flex justify-between items-center pb-3 border-b border-slate-200/50 dark:border-zinc-800">
+                    <h3 className="font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                      <MapPin className="w-5 h-5 text-indigo-500" />
+                      {isAddingZone ? 'Agregar Nueva Zona' : 'Editar Zona'}
+                    </h3>
+                    <button
+                      onClick={() => { setEditingZoneIndex(null); setIsAddingZone(false); }}
+                      className="text-xs text-slate-400 dark:text-zinc-500 hover:text-slate-600 font-bold"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+
+                  <form onSubmit={saveZone} className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Nombre de la Zona / Filtro de Ubicación</label>
+                      <input
+                        type="text"
+                        required
+                        value={zoneForm}
+                        onChange={(e) => setZoneForm(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                        placeholder="Ej: Av. Sarmiento, Av. Libertad, Microcentro"
+                      />
+                    </div>
+
+                    <div className="pt-4 flex justify-end gap-2 border-t border-slate-200/50 dark:border-zinc-800">
+                      <button
+                        type="button"
+                        onClick={() => { setEditingZoneIndex(null); setIsAddingZone(false); }}
+                        className="px-5 py-2.5 bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 font-bold text-xs rounded-xl"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-xs"
+                      >
+                        <Save className="w-4 h-4" /> Guardar Zona
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* --- TAB MAPCONFIG --- */}
+          {activeTab === 'map' && (
+            <div className="space-y-6 animate-fadeIn">
+              <div className="p-5 sm:p-6 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-3xl space-y-4">
+                <div className="flex justify-between items-center pb-3 border-b border-slate-200/50 dark:border-zinc-800">
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                    <MapIcon className="w-5 h-5 text-indigo-500" />
+                    Parámetros del Mapa Central de la App
+                  </h3>
+                  {mapSaved && (
+                    <span className="text-emerald-500 font-bold text-xs flex items-center gap-1">
+                      <Check className="w-4 h-4 animate-bounce" /> ¡Cambios guardados!
+                    </span>
+                  )}
+                </div>
+
+                <form onSubmit={saveMapConfig} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Nombre de la Ciudad</label>
+                      <input
+                        type="text"
+                        required
+                        value={mapForm.cityName}
+                        onChange={(e) => setMapForm({ ...mapForm, cityName: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                        placeholder="Ej: Oberá, Misiones"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Zoom Inicial por Defecto</label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        max="22"
+                        value={mapForm.defaultZoom}
+                        onChange={(e) => setMapForm({ ...mapForm, defaultZoom: parseInt(e.target.value) || 15 })}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                        placeholder="Ej: 15"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Latitud Central</label>
+                      <input
+                        type="text"
+                        required
+                        value={mapForm.centerLat}
+                        onChange={(e) => setMapForm({ ...mapForm, centerLat: parseFloat(e.target.value) || -27.4856 })}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                        placeholder="-27.4856"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Longitud Central</label>
+                      <input
+                        type="text"
+                        required
+                        value={mapForm.centerLng}
+                        onChange={(e) => setMapForm({ ...mapForm, centerLng: parseFloat(e.target.value) || -55.1193 })}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                        placeholder="-55.1193"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl flex gap-3">
+                    <Sliders className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-xs text-indigo-900 dark:text-indigo-400">¿Cómo funciona?</h4>
+                      <p className="text-[10px] text-indigo-700 dark:text-indigo-500 font-semibold mt-0.5 leading-relaxed">
+                        Estas coordenadas determinan el centro geográfico donde se iniciará el mapa de la app. Los comercios sin coordenadas geográficas reales se dispersarán automáticamente alrededor de este punto central.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 flex justify-end gap-2 border-t border-slate-200/50 dark:border-zinc-800">
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 bg-[#2B0E67] text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Save className="w-4 h-4" /> Guardar Cambios del Mapa
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* --- TAB SITECONFIG --- */}
+          {activeTab === 'site' && (
+            <div className="space-y-6 animate-fadeIn">
+              <div className="p-5 sm:p-6 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-3xl space-y-4">
+                <div className="flex justify-between items-center pb-3 border-b border-slate-200/50 dark:border-zinc-800">
+                  <h3 className="font-bold text-sm text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-indigo-500" />
+                    Personalización Estética del Sitio (No-Code Branding)
+                  </h3>
+                  {siteSaved && (
+                    <span className="text-emerald-500 font-bold text-xs flex items-center gap-1">
+                      <Check className="w-4 h-4 animate-bounce" /> ¡Branding guardado!
+                    </span>
+                  )}
+                </div>
+
+                <form onSubmit={saveSiteConfig} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Título de la Plataforma</label>
+                      <input
+                        type="text"
+                        required
+                        value={siteForm.appTitle}
+                        onChange={(e) => setSiteForm({ ...siteForm, appTitle: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                        placeholder="Ej: Oberá en Oferta"
+                      />
+                    </div>
+
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Subtítulo / Eslogan Descriptivo</label>
+                      <input
+                        type="text"
+                        required
+                        value={siteForm.appSubtitle}
+                        onChange={(e) => setSiteForm({ ...siteForm, appSubtitle: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                        placeholder="Ej: Todos los comercios, ofertas y descuentos en un solo mapa interactivo."
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-extrabold text-slate-700 dark:text-zinc-300 uppercase tracking-wider block mb-1">Emoji de Bienvenida / Icono Principal</label>
+                      <input
+                        type="text"
+                        required
+                        value={siteForm.welcomeEmoji}
+                        onChange={(e) => setSiteForm({ ...siteForm, welcomeEmoji: e.target.value })}
+                        className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-100 focus:outline-none"
+                        placeholder="Ej: 🧉 o 🛒"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-4 flex justify-end gap-2 border-t border-slate-200/50 dark:border-zinc-800">
+                    <button
+                      type="submit"
+                      className="px-5 py-2.5 bg-[#2B0E67] text-white font-extrabold text-xs rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Save className="w-4 h-4" /> Guardar Configuración Estética
+                    </button>
+                  </div>
+                </form>
+              </div>
             </div>
           )}
         </div>

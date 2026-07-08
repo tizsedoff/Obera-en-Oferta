@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, QrCode, Phone, CheckCircle, Info, Bookmark, ExternalLink, RefreshCw, Smartphone, Star } from 'lucide-react';
 
-import { Shop, Offer, Notification, TabType } from './types';
-import { INITIAL_SHOPS, INITIAL_OFFERS, INITIAL_NOTIFICATIONS } from './data';
+import { Shop, Offer, Notification, TabType, Category, MapConfig, SiteConfig } from './types';
+import { INITIAL_SHOPS, INITIAL_OFFERS, INITIAL_NOTIFICATIONS, CATEGORIES_STORY, ZONES } from './data';
 
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
@@ -112,6 +112,35 @@ export default function App() {
     return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
   });
 
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const saved = localStorage.getItem('obera_ofertas_categories');
+    return saved ? JSON.parse(saved) : CATEGORIES_STORY;
+  });
+
+  const [zones, setZones] = useState<string[]>(() => {
+    const saved = localStorage.getItem('obera_ofertas_zones');
+    return saved ? JSON.parse(saved) : ZONES;
+  });
+
+  const [mapConfig, setMapConfig] = useState<MapConfig>(() => {
+    const saved = localStorage.getItem('obera_ofertas_map_config');
+    return saved ? JSON.parse(saved) : {
+      centerLat: -27.4856,
+      centerLng: -55.1193,
+      defaultZoom: 15,
+      cityName: 'Oberá'
+    };
+  });
+
+  const [siteConfig, setSiteConfig] = useState<SiteConfig>(() => {
+    const saved = localStorage.getItem('obera_ofertas_site_config');
+    return saved ? JSON.parse(saved) : {
+      appTitle: 'Oberá en Oferta!',
+      appSubtitle: 'Los mejores descuentos de la Tierra Colorada',
+      welcomeEmoji: '🧉'
+    };
+  });
+
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -131,6 +160,17 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // My registered shop state
+  const [myShopId, setMyShopId] = useState<string | null>(() => {
+    return localStorage.getItem('obera_ofertas_my_shop_id') || null;
+  });
+
+  // Redeemed deactivated coupons state
+  const [redeemedCouponIds, setRedeemedCouponIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('obera_ofertas_redeemed_coupons');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Sync to localStorage on update
   useEffect(() => {
     localStorage.setItem('obera_ofertas_shops', JSON.stringify(shops));
@@ -147,6 +187,26 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('obera_ofertas_claimed_coupons', JSON.stringify(claimedCouponIds));
   }, [claimedCouponIds]);
+
+  useEffect(() => {
+    localStorage.setItem('obera_ofertas_redeemed_coupons', JSON.stringify(redeemedCouponIds));
+  }, [redeemedCouponIds]);
+
+  useEffect(() => {
+    localStorage.setItem('obera_ofertas_categories', JSON.stringify(categories));
+  }, [categories]);
+
+  useEffect(() => {
+    localStorage.setItem('obera_ofertas_zones', JSON.stringify(zones));
+  }, [zones]);
+
+  useEffect(() => {
+    localStorage.setItem('obera_ofertas_map_config', JSON.stringify(mapConfig));
+  }, [mapConfig]);
+
+  useEffect(() => {
+    localStorage.setItem('obera_ofertas_site_config', JSON.stringify(siteConfig));
+  }, [siteConfig]);
 
   // Listen to admin panel request event
   useEffect(() => {
@@ -455,6 +515,8 @@ export default function App() {
               <InicioTab
                 offers={offers}
                 shops={shops}
+                categories={categories}
+                siteConfig={siteConfig}
                 onOpenOffer={(offer) => setSelectedDetailOffer(offer)}
                 onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
                 onSelectCategoryStory={handleSelectCategoryStory}
@@ -467,6 +529,7 @@ export default function App() {
               <HomeTab
                 offers={offers}
                 shops={shops}
+                categories={categories}
                 onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
                 onOpenOffer={(offer) => setSelectedDetailOffer(offer)}
                 onSelectCategoryStory={handleSelectCategoryStory}
@@ -482,6 +545,8 @@ export default function App() {
               <CategoriesTab
                 offers={offers}
                 shops={shops}
+                categories={categories}
+                zones={zones}
                 onOpenOffer={(offer) => setSelectedDetailOffer(offer)}
                 onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
                 selectedCategory={selectedCategory}
@@ -493,6 +558,7 @@ export default function App() {
               <MapView
                 shops={shops}
                 offers={offers}
+                mapConfig={mapConfig}
                 onSelectOffer={(offer) => setSelectedDetailOffer(offer)}
                 initialSelectedShopId={selectedShopIdOnMap}
               />
@@ -590,6 +656,14 @@ export default function App() {
           onUpdateOffers={setOffers}
           notifications={notifications}
           onUpdateNotifications={setNotifications}
+          categories={categories}
+          onUpdateCategories={setCategories}
+          zones={zones}
+          onUpdateZones={setZones}
+          mapConfig={mapConfig}
+          onUpdateMapConfig={setMapConfig}
+          siteConfig={siteConfig}
+          onUpdateSiteConfig={setSiteConfig}
           onClose={() => setShowAdminPanel(false)}
         />
       )}

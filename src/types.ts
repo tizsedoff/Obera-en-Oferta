@@ -28,6 +28,7 @@ export interface Offer {
   views: number;
   couponsClaimed: number;
   isFlashSale: boolean;
+  mediaType?: 'image' | 'video';
 }
 
 export interface Notification {
@@ -39,3 +40,23 @@ export interface Notification {
 }
 
 export type TabType = 'home' | 'feed' | 'categories' | 'map' | 'myshop' | 'myprofile';
+
+export interface Category {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+}
+
+export interface MapConfig {
+  centerLat: number;
+  centerLng: number;
+  defaultZoom: number;
+  cityName: string;
+}
+
+export interface SiteConfig {
+  appTitle: string;
+  appSubtitle: string;
+  welcomeEmoji: string;
+}

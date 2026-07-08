@@ -19,12 +19,13 @@ import {
 } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Shop, Offer } from '../types';
+import { Shop, Offer, MapConfig } from '../types';
 import ShopLogo from './ShopLogo';
 
 interface MapViewProps {
   shops: Shop[];
   offers: Offer[];
+  mapConfig: MapConfig;
   onSelectOffer: (offer: Offer) => void;
   initialSelectedShopId?: string | null;
 }
@@ -39,37 +40,37 @@ const REAL_COORDINATES: Record<string, { lat: number; lng: number }> = {
   'shop-6': { lat: -27.487512, lng: -55.116521 }, // Calzados Carhue - Av. Libertad 340
 };
 
-const getShopCoordinates = (shop: Shop): { lat: number; lng: number } => {
-  const parseCoordinate = (val: any): number | undefined => {
-    if (val === undefined || val === null) return undefined;
-    const cleanStr = String(val).trim().replace(',', '.');
-    const parsed = parseFloat(cleanStr);
-    return isNaN(parsed) ? undefined : parsed;
-  };
-
-  const lat = parseCoordinate(shop.latitude);
-  const lng = parseCoordinate(shop.longitude);
-
-  if (lat !== undefined && lng !== undefined) {
-    return { lat, lng };
-  }
-  if (REAL_COORDINATES[shop.id]) {
-    return REAL_COORDINATES[shop.id];
-  }
-  // Fallback: Generate a deterministic offset based on shop.id numeric value near Oberá center
-  const idNum = parseInt(shop.id.replace(/\D/g, '') || '0') || 1;
-  const latOffset = ((idNum % 200) - 100) * 0.00012;
-  const lngOffset = ((idNum % 130) - 65) * 0.00012;
-  return { lat: -27.4856 + latOffset, lng: -55.1193 + lngOffset };
-};
-
 type MapTheme = 'voyager' | 'positron' | 'dark';
 
-export default function MapView({ shops, offers, onSelectOffer, initialSelectedShopId }: MapViewProps) {
+export default function MapView({ shops, offers, mapConfig, onSelectOffer, initialSelectedShopId }: MapViewProps) {
   const [selectedShopId, setSelectedShopId] = useState<string | null>(initialSelectedShopId || 'shop-1');
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [mapCategory, setMapCategory] = useState<string>('Todos');
-  
+
+  const getShopCoordinates = (shop: Shop): { lat: number; lng: number } => {
+    const parseCoordinate = (val: any): number | undefined => {
+      if (val === undefined || val === null) return undefined;
+      const cleanStr = String(val).trim().replace(',', '.');
+      const parsed = parseFloat(cleanStr);
+      return isNaN(parsed) ? undefined : parsed;
+    };
+
+    const lat = parseCoordinate(shop.latitude);
+    const lng = parseCoordinate(shop.longitude);
+
+    if (lat !== undefined && lng !== undefined) {
+      return { lat, lng };
+    }
+    if (REAL_COORDINATES[shop.id]) {
+      return REAL_COORDINATES[shop.id];
+    }
+    // Fallback: Generate a deterministic offset based on shop.id numeric value near configured center
+    const idNum = parseInt(shop.id.replace(/\D/g, '') || '0') || 1;
+    const latOffset = ((idNum % 200) - 100) * 0.00012;
+    const lngOffset = ((idNum % 130) - 65) * 0.00012;
+    return { lat: mapConfig.centerLat + latOffset, lng: mapConfig.centerLng + lngOffset };
+  };
+
   // Default map theme based on HTML dark class, otherwise Voyager
   const [mapTheme, setMapTheme] = useState<MapTheme>(() => {
     const isSystemDark = document.documentElement.classList.contains('dark');
@@ -111,7 +112,7 @@ export default function MapView({ shops, offers, onSelectOffer, initialSelectedS
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    let initialCenter = { lat: -27.4856, lng: -55.1193 };
+    let initialCenter = { lat: mapConfig.centerLat, lng: mapConfig.centerLng };
     if (selectedShopId) {
       const targetShop = shops.find(s => s.id === selectedShopId);
       if (targetShop) {
@@ -122,7 +123,7 @@ export default function MapView({ shops, offers, onSelectOffer, initialSelectedS
     // Create Map
     const map = L.map(mapContainerRef.current, {
       center: [initialCenter.lat, initialCenter.lng],
-      zoom: 15,
+      zoom: mapConfig.defaultZoom,
       zoomControl: false,
       scrollWheelZoom: true
     });
@@ -138,6 +139,13 @@ export default function MapView({ shops, offers, onSelectOffer, initialSelectedS
       mapRef.current = null;
     };
   }, []);
+
+  // 1b. Reactive re-centering when mapConfig changes in real-time
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.setView([mapConfig.centerLat, mapConfig.centerLng], mapConfig.defaultZoom);
+  }, [mapConfig.centerLat, mapConfig.centerLng, mapConfig.defaultZoom]);
 
   // 2. Manage tile layer when mapTheme changes
   useEffect(() => {

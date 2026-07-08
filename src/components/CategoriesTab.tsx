@@ -20,13 +20,14 @@ import {
   Sparkle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Offer, Shop } from '../types';
-import { ZONES, CATEGORIES_STORY } from '../data';
+import { Offer, Shop, Category } from '../types';
 import ShopLogo from './ShopLogo';
 
 interface CategoriesTabProps {
   offers: Offer[];
   shops: Shop[];
+  categories: Category[];
+  zones: string[];
   onOpenOffer: (offer: Offer) => void;
   onOpenCoupon?: (offer: Offer) => void;
   selectedCategory: string;
@@ -44,6 +45,8 @@ interface Comment {
 export default function CategoriesTab({
   offers,
   shops,
+  categories,
+  zones,
   onOpenOffer,
   onOpenCoupon,
   selectedCategory,
@@ -302,7 +305,7 @@ export default function CategoriesTab({
           </div>
 
           <div className="flex gap-4 overflow-x-auto no-scrollbar py-2">
-            {CATEGORIES_STORY.map((cat) => {
+            {categories.map((cat) => {
               const isActive = (selectedCategory === cat.id || (selectedCategory === 'all' && cat.id === 'all'));
               return (
                 <button
@@ -370,7 +373,7 @@ export default function CategoriesTab({
                       📍 Filtrar por Zona de Oberá
                     </label>
                     <div className="flex flex-wrap gap-1.5">
-                      {ZONES.map((zone) => (
+                      {zones.map((zone) => (
                         <button
                           key={zone}
                           onClick={() => setSelectedZone(zone)}
