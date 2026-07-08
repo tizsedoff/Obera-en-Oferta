@@ -515,7 +515,7 @@ export default function App() {
       )}
 
       {/* Persistent Interactive AI Chatbot */}
-      {userRole && <AiChatbot />}
+      {userRole && <AiChatbot shops={shops} offers={offers} />}
 
     </div>
   );

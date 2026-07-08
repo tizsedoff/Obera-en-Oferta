@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, Sparkles, X, Send, RefreshCw, ChevronDown, Store, MapPin, QrCode, Flame, Image, Paperclip, Check, HelpCircle, FileText } from 'lucide-react';
+import { Shop, Offer } from '../types';
 
 interface Message {
   id: string;
@@ -25,7 +26,12 @@ const BOT_RESPONSES: Record<string, string> = {
   zones_info: '¡Oberá está repleta de comercios adheridos! 📍\n\nActualmente vas a encontrar ofertas en las zonas más transitadas:\n• **Av. Sarmiento:** El polo comercial central.\n• **Av. Libertad:** Gastronomía y calzados modernos.\n• **Av. Italia & Plaza San Martín:** Cafeterías y heladerías para pasar la tarde.\n\nTe recomiendo abrir la pestaña 🗺️ "Mapa" para ver todos los locales geolocalizados en tiempo real y trazar tu ruta de ahorro.',
 };
 
-export default function AiChatbot() {
+interface AiChatbotProps {
+  shops?: Shop[];
+  offers?: Offer[];
+}
+
+export default function AiChatbot({ shops = [], offers = [] }: AiChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -127,10 +133,10 @@ export default function AiChatbot() {
       };
       setMessages(prev => [...prev, botMessage]);
     } catch (error) {
-      console.warn("Error en la API del backend, usando razonamiento local:", error);
+      console.warn("Error en la API del backend, usando razonamiento local autónomo de APS DEVELOPER:", error);
       
       // Advanced fallback local reasoning
-      let botText = '¡Qué buen mensaje! Como asistente virtual de Oberá en Oferta, estoy aquí para guiarte en tu recorrido de compras por el centro o ayudarte a subir promociones si sos comerciante. 🧉\n\nSi tenés dudas, tocá alguna de las opciones rápidas de abajo o preguntame sobre descuentos hoy.';
+      let botText = '¡Qué buen mensaje! Como asistente virtual de Oberá en Oferta (impulsado por APS DEVELOPER), estoy listo para ayudarte. 🧉\n\nSi tenés dudas, tocá alguna de las opciones rápidas de abajo o preguntame sobre descuentos hoy.';
       const lowerText = textToSend.toLowerCase();
 
       if (imageToSend) {
@@ -142,12 +148,35 @@ export default function AiChatbot() {
           botText = '🔍 **[Oberá en Oferta Vision - Análisis General]** 🔍\n\n¡Subiste una imagen genial! Mis sensores multimodales la han procesado con éxito. 📸🧉\n\n• **Diagnóstico:** Identifico elementos que representan productos de consumo, moda o gastronomía regional de Misiones.\n• **Consejo del Asistente:** Si este producto es de un comercio adherido en Oberá, te aconsejo buscar la tienda en la pestaña de **"Mapa"** para asegurar tu cupón de descuento QR antes de comprar.\n\n¿Te gustaría que te cuente cómo conseguir cupones exclusivos hoy con el código **OBERABOT20**?';
         }
       } else {
-        if (lowerText.includes('oferta') || lowerText.includes('descuento') || lowerText.includes('hoy') || lowerText.includes('flash') || lowerText.includes('barato') || lowerText.includes('promocion')) {
-          botText = BOT_RESPONSES.today_offers;
+        if (lowerText.startsWith('hola') || lowerText.includes('buen dia') || lowerText.includes('buenos dias') || lowerText.includes('buenas tardes') || lowerText.includes('buenas noches') || lowerText.includes('saludos') || lowerText.includes('que tal')) {
+          botText = `👋 ¡Hola, che! Soy el **Asistente Virtual de Oberá en Oferta** creado por **APS DEVELOPER**.\n\n¿En qué te puedo ayudar hoy? Podés preguntarme por:\n• 🏷️ **Ofertas activas hoy**\n• ❓ **Cómo usar los cupones QR**\n• 🏪 **Registrar tu comercio**\n• 🗺️ **Zonas comerciales en Oberá**\n\nTambién podés arrastrar o subir fotos de tus productos o tickets para analizarlos en tiempo real.`;
+        } else if (lowerText.includes('oferta') || lowerText.includes('descuento') || lowerText.includes('hoy') || lowerText.includes('flash') || lowerText.includes('barato') || lowerText.includes('promocion') || lowerText.includes('cupon') || lowerText.includes('ahorrar')) {
+          if (offers && offers.length > 0) {
+            const activeOffers = offers.slice(0, 4);
+            botText = `🔥 **[Buscador Autónomo de APS DEVELOPER]** 🔥\n\n¡He escaneado la base de datos de la aplicación para vos! Aquí tenés las mejores ofertas activas de hoy en Oberá:\n\n` + 
+              activeOffers.map(o => {
+                const shopName = shops.find(s => s.id === o.shopId)?.name || 'Comercio Adherido';
+                const pct = Math.round((1 - o.discountPrice / o.originalPrice) * 100);
+                return `• **${o.title}** en *${shopName}*\n  💰 **$${o.discountPrice}** (Antes ~~$${o.originalPrice}~~) - *¡Ahorrás ${pct}%!*`;
+              }).join('\n\n') + 
+              `\n\n🎟️ ¡Tocá cualquiera de ellas en la pestaña de Inicio para generar tu cupón QR al instante sin consumir tus datos!`;
+          } else {
+            botText = BOT_RESPONSES.today_offers;
+          }
         } else if (lowerText.includes('qr') || lowerText.includes('cupon') || lowerText.includes('cómo usar') || lowerText.includes('cómo uso') || lowerText.includes('escanear') || lowerText.includes('canjear')) {
           botText = BOT_RESPONSES.how_qr;
-        } else if (lowerText.includes('vender') || lowerText.includes('registrar') || lowerText.includes('comercio') || lowerText.includes('negocio') || lowerText.includes('local') || lowerText.includes('tienda') || lowerText.includes('dueño')) {
-          botText = BOT_RESPONSES.register_shop;
+        } else if (lowerText.includes('vender') || lowerText.includes('registrar') || lowerText.includes('comercio') || lowerText.includes('negocio') || lowerText.includes('local') || lowerText.includes('tienda') || lowerText.includes('dueño') || lowerText.includes('comercios')) {
+          if (shops && shops.length > 0) {
+            const sampleShops = shops.slice(0, 4);
+            botText = `🏪 **[Directorio de Comercios de APS DEVELOPER]** 🏪\n\nActualmente hay **${shops.length} comercios adheridos** a Oberá en Oferta listos para recibir tus cupones:\n\n` +
+              sampleShops.map(s => {
+                const count = offers.filter(o => o.shopId === s.id).length;
+                return `• **${s.name}** (${s.category})\n  📍 *${s.address}* | 📞 ${s.phone}\n  ⭐ ${s.rating} estrellas | ${count} ofertas activas`;
+              }).join('\n\n') +
+              `\n\n¿Querés registrar tu propio negocio? Podés subirlo gratis y al instante desde la pestaña **"Mi Cuenta"** en la subpestaña **"Configuraciones"**.`;
+          } else {
+            botText = BOT_RESPONSES.register_shop;
+          }
         } else if (lowerText.includes('zona') || lowerText.includes('calle') || lowerText.includes('sarmiento') || lowerText.includes('libertad') || lowerText.includes('donde') || lowerText.includes('mapa') || lowerText.includes('ubicar')) {
           botText = BOT_RESPONSES.zones_info;
         } else if (lowerText.includes('mate') || lowerText.includes('yerba') || lowerText.includes('misiones') || lowerText.includes('terere') || lowerText.includes('chipa')) {
