@@ -73,13 +73,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
           return;
         }
 
-        // Default local credentials to allow smooth standard user/comercio logins if typed manually
-        const defaultUsers = [
-          { email: 'comprador@obera.com', pass: 'cliente123', name: 'Tomás Sedoff', role: 'customer' },
-          { email: 'yerbamate@obera.com', pass: 'comercio123', name: 'Yerba Mate & Delicias', role: 'merchant' }
-        ];
-
-        const allUsers = [...defaultUsers, ...getRegisteredUsers()];
+        const allUsers = getRegisteredUsers();
         const matched = allUsers.find(
           (u) => u.email === lowerEmail && u.pass === password
         );

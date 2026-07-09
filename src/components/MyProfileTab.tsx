@@ -245,7 +245,7 @@ export default function MyProfileTab({
           
           <div className="text-center sm:text-left flex-1 space-y-1">
             <h2 className="font-display font-black text-xl text-slate-900 dark:text-zinc-50 tracking-tight">
-              {!userEmail ? 'Invitado / Visitante' : (localStorage.getItem('obera_ofertas_user_name') || 'Tomás Sedoff')}
+              {!userEmail ? 'Invitado / Visitante' : (localStorage.getItem('obera_ofertas_user_name') || 'Usuario Registrado')}
             </h2>
             <p className="text-xs text-slate-500 dark:text-zinc-400 flex items-center justify-center sm:justify-start gap-1 font-medium">
               <Mail className="w-3.5 h-3.5" /> {!userEmail ? 'Sesión de Invitado temporal' : userEmail}

@@ -65,21 +65,16 @@ export default function App() {
     localStorage.setItem('obera_ofertas_dark_mode', String(darkMode));
   }, [darkMode]);
 
-  // User Authentication role state
-  const [userRole, setUserRole] = useState<'customer' | 'merchant' | 'visitor' | null>(() => {
-    const saved = localStorage.getItem('obera_ofertas_user_role');
-    return (saved === 'customer' || saved === 'merchant' || saved === 'visitor') ? (saved as any) : null;
-  });
+  // User Authentication role state - always starts as null so that the login screen is presented on initial entry
+  const [userRole, setUserRole] = useState<'customer' | 'merchant' | 'visitor' | null>(null);
 
-  const [userEmail, setUserEmail] = useState<string>(() => {
-    return localStorage.getItem('obera_ofertas_user_email') || '';
-  });
+  const [userEmail, setUserEmail] = useState<string>('');
 
   const handleLogin = (role: 'customer' | 'merchant' | 'visitor', email?: string, name?: string) => {
     setUserRole(role);
     localStorage.setItem('obera_ofertas_user_role', role);
     
-    const resolvedEmail = email || (role === 'merchant' ? 'yerbamate@obera.com' : (role === 'visitor' ? '' : 'tizsedoff@gmail.com'));
+    const resolvedEmail = email || '';
     setUserEmail(resolvedEmail);
     if (resolvedEmail) {
       localStorage.setItem('obera_ofertas_user_email', resolvedEmail);
