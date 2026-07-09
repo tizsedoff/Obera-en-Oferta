@@ -603,6 +603,8 @@ export default function App() {
               <MyProfileTab
                 offers={offers}
                 shops={shops}
+                categories={categories}
+                zones={zones}
                 claimedCouponIds={claimedCouponIds}
                 onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
                 onUpgradeToMerchant={handleUpgradeToMerchant}
