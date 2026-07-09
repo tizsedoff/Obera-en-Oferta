@@ -453,8 +453,15 @@ export default function App() {
     }
   };
 
-  // Active Merchant Shop (for demo purposes, we tie the merchant dashboard to shop-1 "Yerba Mate & Delicias Misioneras")
-  const activeMerchantShop = shops[0] || null;
+  // Active Merchant Shop (correctly resolves to the registered merchant's shop if set, otherwise falls back to first shop)
+  const activeMerchantShop = useMemo(() => {
+    if (userRole === 'merchant' && myShopId) {
+      const found = shops.find(s => s.id === myShopId);
+      if (found) return found;
+    }
+    return shops[0] || null;
+  }, [shops, userRole, myShopId]);
+
   const merchantOffers = activeMerchantShop ? offers.filter(o => o.shopId === activeMerchantShop.id) : [];
 
   if (isLoadingApp) {
