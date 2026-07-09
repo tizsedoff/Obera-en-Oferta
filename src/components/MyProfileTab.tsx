@@ -10,7 +10,20 @@ interface MyProfileTabProps {
   zones: string[];
   claimedCouponIds: string[];
   onOpenCoupon: (offer: Offer) => void;
-  onUpgradeToMerchant: (shopData: Omit<Shop, 'id' | 'rating' | 'isOpen'>) => void;
+  onUpgradeToMerchant: (
+    shopData: Omit<Shop, 'id' | 'rating' | 'isOpen'> & { base64Logo?: string | null },
+    initialOffer?: {
+      title: string;
+      description: string;
+      originalPrice: number;
+      discountPrice: number;
+      category: string;
+      expiryDate: string;
+      hasQrCoupon: boolean;
+      isFlashSale: boolean;
+      base64Image: string | null;
+    } | null
+  ) => void;
   onLogout: () => void;
   userEmail: string;
 }
@@ -36,12 +49,24 @@ export default function MyProfileTab({
   const [shopCategory, setShopCategory] = useState('Gastronomía');
   const [shopZone, setShopZone] = useState('Centro');
   const [shopLogo, setShopLogo] = useState('🛍️');
+  const [shopLogoBase64, setShopLogoBase64] = useState<string | null>(null);
   const [shopAddress, setShopAddress] = useState('');
-  const [shopPhone, setShopPhone] = useState('543755412345');
+  const [shopPhone, setShopPhone] = useState('');
   const [useAutoCoords, setUseAutoCoords] = useState(true);
   const [shopLat, setShopLat] = useState('-27.4856');
   const [shopLng, setShopLng] = useState('-55.1193');
   const [formError, setFormError] = useState('');
+
+  // Initial offer states (Required for Pre-launch)
+  const [addInitialOffer, setAddInitialOffer] = useState(true);
+  const [offerTitle, setOfferTitle] = useState('');
+  const [offerDescription, setOfferDescription] = useState('');
+  const [offerOriginalPrice, setOfferOriginalPrice] = useState('');
+  const [offerDiscountPrice, setOfferDiscountPrice] = useState('');
+  const [offerExpiryDate, setOfferExpiryDate] = useState('2026-07-20');
+  const [offerImageBase64, setOfferImageBase64] = useState<string | null>(null);
+  const [offerIsFlash, setOfferIsFlash] = useState(false);
+  const [offerHasQr, setOfferHasQr] = useState(true);
 
   // Logo preset emoji list
   const LOGO_PRESETS = ['🛍️', '🍔', '🍕', '👚', '🔌', '🛒', '🍦', '🧉', '💈', '💻', '🍰', '🛠️', '🚗', '📚'];
@@ -99,11 +124,36 @@ export default function MyProfileTab({
     return true;
   };
 
+  const validateStep3 = () => {
+    if (!addInitialOffer) {
+      setFormError('');
+      return true;
+    }
+    if (!offerTitle.trim()) {
+      setFormError('Por favor, ingresá el título de tu oferta inicial.');
+      return false;
+    }
+    const oPrice = parseFloat(offerOriginalPrice);
+    const dPrice = parseFloat(offerDiscountPrice);
+    if (isNaN(oPrice) || isNaN(dPrice) || oPrice <= 0 || dPrice <= 0) {
+      setFormError('Los precios de la oferta deben ser números válidos mayores a cero.');
+      return false;
+    }
+    if (dPrice >= oPrice) {
+      setFormError('El precio de oferta debe ser menor al precio original.');
+      return false;
+    }
+    setFormError('');
+    return true;
+  };
+
   const handleNextStep = () => {
     if (regStep === 1) {
       if (validateStep1()) setRegStep(2);
     } else if (regStep === 2) {
       if (validateStep2()) setRegStep(3);
+    } else if (regStep === 3) {
+      if (validateStep3()) setRegStep(4);
     }
   };
 
@@ -128,8 +178,19 @@ export default function MyProfileTab({
         address: shopAddress,
         phone: shopPhone,
         latitude: coords.lat,
-        longitude: coords.lng
-      });
+        longitude: coords.lng,
+        base64Logo: shopLogoBase64
+      }, addInitialOffer ? {
+        title: offerTitle,
+        description: offerDescription || `Súper descuento de inauguración en ${shopName}. ¡Aprovechalo hoy mismo!`,
+        originalPrice: parseFloat(offerOriginalPrice),
+        discountPrice: parseFloat(offerDiscountPrice),
+        category: shopCategory,
+        expiryDate: offerExpiryDate,
+        hasQrCoupon: offerHasQr,
+        isFlashSale: offerIsFlash,
+        base64Image: offerImageBase64
+      } : null);
     }, 1500);
   };
 
@@ -140,12 +201,25 @@ export default function MyProfileTab({
     setShopCategory(categories.filter(c => c.id !== 'all')[0]?.name || 'Gastronomía');
     setShopZone(zones[0] || 'Centro');
     setShopLogo('🛍️');
+    setShopLogoBase64(null);
     setShopAddress('');
-    setShopPhone('543755412345');
+    setShopPhone('');
     setUseAutoCoords(true);
     const initialCoords = getZoneCoordinates(zones[0] || 'Centro');
     setShopLat(String(initialCoords.lat));
     setShopLng(String(initialCoords.lng));
+    
+    // Initial offer resets
+    setAddInitialOffer(true);
+    setOfferTitle('');
+    setOfferDescription('');
+    setOfferOriginalPrice('');
+    setOfferDiscountPrice('');
+    setOfferExpiryDate('2026-07-20');
+    setOfferImageBase64(null);
+    setOfferIsFlash(false);
+    setOfferHasQr(true);
+
     setFormError('');
     setShowUpgradeModal(true);
   };
@@ -159,20 +233,26 @@ export default function MyProfileTab({
         <div className="absolute top-[-50px] right-[-50px] w-40 h-40 bg-brand-orange/10 dark:bg-indigo-500/5 rounded-full blur-2xl" />
         
         <div className="flex flex-col sm:flex-row items-center gap-5 relative z-10">
-          <div className="h-20 w-20 rounded-full bg-orange-100 dark:bg-zinc-800 text-brand-orange dark:text-indigo-400 border-2 border-orange-50 dark:border-zinc-700 flex items-center justify-center font-display font-black text-2xl shadow-inner">
-            {userEmail.substring(0, 2).toUpperCase()}
-          </div>
+          {!userEmail ? (
+            <div className="h-20 w-20 rounded-full bg-slate-100 dark:bg-zinc-800 text-slate-500 dark:text-zinc-400 border-2 border-slate-50 dark:border-zinc-700 flex items-center justify-center font-display font-black text-2xl shadow-inner">
+              👤
+            </div>
+          ) : (
+            <div className="h-20 w-20 rounded-full bg-orange-100 dark:bg-zinc-800 text-brand-orange dark:text-indigo-400 border-2 border-orange-50 dark:border-zinc-700 flex items-center justify-center font-display font-black text-2xl shadow-inner">
+              {userEmail.substring(0, 2).toUpperCase()}
+            </div>
+          )}
           
           <div className="text-center sm:text-left flex-1 space-y-1">
             <h2 className="font-display font-black text-xl text-slate-900 dark:text-zinc-50 tracking-tight">
-              Tomás Sedoff
+              {!userEmail ? 'Invitado / Visitante' : (localStorage.getItem('obera_ofertas_user_name') || 'Tomás Sedoff')}
             </h2>
             <p className="text-xs text-slate-500 dark:text-zinc-400 flex items-center justify-center sm:justify-start gap-1 font-medium">
-              <Mail className="w-3.5 h-3.5" /> {userEmail || 'tizsedoff@gmail.com'}
+              <Mail className="w-3.5 h-3.5" /> {!userEmail ? 'Sesión de Invitado temporal' : userEmail}
             </p>
             <div className="pt-1 flex flex-wrap justify-center sm:justify-start gap-2">
               <span className="text-[10px] bg-indigo-50 dark:bg-zinc-800/80 text-brand-orange dark:text-indigo-400 font-bold px-2.5 py-0.5 rounded-full border border-indigo-100/30 dark:border-zinc-700">
-                Cliente Standard
+                {!userEmail ? 'Visitante' : 'Cliente Verificado'}
               </span>
               <span className="text-[10px] bg-red-50 dark:bg-red-950/20 text-brand-red dark:text-red-400 font-bold px-2.5 py-0.5 rounded-full border border-red-100/30 dark:border-zinc-900/30">
                 Oberá, Misiones 🧉
@@ -224,7 +304,21 @@ export default function MyProfileTab({
               </span>
             </div>
 
-            {claimedOffers.length === 0 ? (
+            {!userEmail ? (
+              <div className="py-10 text-center border-2 border-dashed border-slate-150 dark:border-zinc-800/80 rounded-2xl space-y-4 px-4">
+                <span className="text-4xl block">🔒</span>
+                <p className="text-xs font-bold text-slate-800 dark:text-zinc-200">Cupones exclusivos para usuarios registrados</p>
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400 max-w-xs mx-auto leading-relaxed">
+                  Para guardar y activar cupones de descuento, necesitás tener una cuenta verificada. ¡Registrate gratis en segundos para empezar a ahorrar!
+                </p>
+                <button
+                  onClick={onLogout}
+                  className="px-5 py-2.5 bg-brand-orange hover:bg-brand-orange/95 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl shadow-md transition-transform hover:scale-102 cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <LogOut className="w-3.5 h-3.5" /> Registrarme o Iniciar Sesión
+                </button>
+              </div>
+            ) : claimedOffers.length === 0 ? (
               <div className="py-10 text-center border-2 border-dashed border-slate-100 dark:border-zinc-850 rounded-2xl space-y-3">
                 <span className="text-3xl block filter grayscale opacity-60">🎟️</span>
                 <p className="text-xs font-bold text-slate-800 dark:text-zinc-355">Aún no guardaste cupones QR</p>
@@ -388,7 +482,7 @@ export default function MyProfileTab({
                 </h3>
               </div>
               <div className="flex items-center gap-1">
-                {[1, 2, 3].map((s) => (
+                {[1, 2, 3, 4].map((s) => (
                   <div
                     key={s}
                     className={`h-1.5 rounded-full transition-all duration-300 ${
@@ -466,16 +560,19 @@ export default function MyProfileTab({
                 {/* Brand emoji preset selector */}
                 <div>
                   <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-zinc-400 block mb-2">
-                    Elegí un Logo/Icono de tu Marca ({shopLogo})
+                    Elegí un Logo/Icono de tu Marca o subí una foto ({shopLogo})
                   </label>
                   <div className="grid grid-cols-6 gap-2 bg-slate-50 dark:bg-zinc-950 p-3 rounded-2xl border border-slate-100 dark:border-zinc-850">
                     {LOGO_PRESETS.map((p) => (
                       <button
                         key={p}
                         type="button"
-                        onClick={() => setShopLogo(p)}
+                        onClick={() => {
+                          setShopLogo(p);
+                          setShopLogoBase64(null);
+                        }}
                         className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl transition-all ${
-                          shopLogo === p 
+                          shopLogo === p && !shopLogoBase64
                             ? 'bg-brand-orange text-white dark:bg-indigo-600 scale-110 shadow-md ring-2 ring-emerald-400' 
                             : 'bg-white dark:bg-zinc-900 hover:bg-slate-100 dark:hover:bg-zinc-800 border border-slate-200 dark:border-zinc-800'
                         }`}
@@ -483,6 +580,58 @@ export default function MyProfileTab({
                         {p}
                       </button>
                     ))}
+                  </div>
+
+                  <div className="mt-3">
+                    <label className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-zinc-500 block mb-1">
+                      O subí una Imagen/Logo de tu Negocio (.png, .jpg)
+                    </label>
+                    <div className="relative border border-dashed border-slate-200 dark:border-zinc-850 hover:border-brand-orange/60 dark:hover:border-indigo-400/60 rounded-2xl p-3 text-center transition-colors">
+                      {shopLogoBase64 ? (
+                        <div className="flex items-center justify-between gap-2.5">
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={shopLogoBase64}
+                              alt="Custom Logo Preview"
+                              className="w-10 h-10 rounded-xl object-cover border border-slate-100 dark:border-zinc-800"
+                            />
+                            <span className="text-[10px] font-bold text-slate-700 dark:text-zinc-300">¡Imagen cargada!</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShopLogoBase64(null);
+                              setShopLogo('🛍️');
+                            }}
+                            className="p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-red-500 rounded-lg transition-colors text-[10px] font-bold cursor-pointer"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer block py-1">
+                          <span className="text-[10px] text-brand-orange dark:text-indigo-400 font-extrabold hover:underline">
+                            📂 Seleccionar Logo de tu Dispositivo
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  setShopLogoBase64(reader.result as string);
+                                  setShopLogo('🖼️');
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -578,18 +727,177 @@ export default function MyProfileTab({
               </div>
             )}
 
-            {/* STEP 3: Preview and Confirmation */}
+            {/* STEP 3: Initial Offer (Required) */}
             {regStep === 3 && (
               <div className="space-y-4 animate-in fade-in duration-200 text-left">
-                <p className="text-xs text-slate-600 dark:text-zinc-350 font-semibold text-center mb-2">
+                <div className="bg-orange-50/40 dark:bg-zinc-950 p-4 rounded-2xl border border-brand-orange/20 dark:border-zinc-800 space-y-3">
+                  <div className="flex items-start gap-2.5">
+                    <span className="p-1.5 bg-brand-orange/10 rounded-lg text-xs shrink-0">🎁</span>
+                    <div className="leading-tight">
+                      <span className="text-[11px] text-slate-900 dark:text-zinc-350 font-black block">
+                        Cargar tu primera Oferta Destacada (Requerido)
+                      </span>
+                      <span className="text-[9px] text-slate-500 dark:text-zinc-400 font-semibold leading-relaxed">
+                        Para el prelanzamiento de la plataforma, cada comercio registrado debe publicar al menos una oferta activa inicial para sus clientes.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {addInitialOffer && (
+                  <div className="space-y-3 pt-1 animate-scale-up">
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-zinc-400 block mb-1">
+                        Título de la Oferta <span className="text-red-555">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej: 2x1 en Medialunas, 30% Off en Jeans"
+                        value={offerTitle}
+                        onChange={(e) => setOfferTitle(e.target.value)}
+                        className="w-full bg-slate-50 dark:bg-zinc-955 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-2 text-xs text-slate-800 dark:text-zinc-200 focus:outline-hidden focus:border-brand-orange dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-zinc-900 transition-all font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-zinc-400 block mb-1">
+                        Descripción de la Oferta
+                      </label>
+                      <textarea
+                        placeholder="Ej: Vení a probar las mejores medialunas de manteca de Oberá."
+                        value={offerDescription}
+                        onChange={(e) => setOfferDescription(e.target.value)}
+                        rows={2}
+                        className="w-full bg-slate-50 dark:bg-zinc-955 border border-slate-200 dark:border-zinc-800 rounded-xl px-4 py-2 text-xs text-slate-800 dark:text-zinc-200 focus:outline-hidden focus:border-brand-orange dark:focus:border-indigo-500 focus:bg-white dark:focus:bg-zinc-900 transition-all font-semibold"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-zinc-400 block mb-1">
+                          Precio Original ($ ARS) <span className="text-red-555">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="4500"
+                          value={offerOriginalPrice}
+                          onChange={(e) => setOfferOriginalPrice(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-zinc-955 border border-slate-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-zinc-200 focus:outline-hidden font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-zinc-400 block mb-1">
+                          Precio Oferta ($ ARS) <span className="text-red-555">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="3000"
+                          value={offerDiscountPrice}
+                          onChange={(e) => setOfferDiscountPrice(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-zinc-955 border border-slate-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-zinc-200 focus:outline-hidden font-bold"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-zinc-400 block mb-1">
+                          Vence el:
+                        </label>
+                        <input
+                          type="date"
+                          value={offerExpiryDate}
+                          onChange={(e) => setOfferExpiryDate(e.target.value)}
+                          className="w-full bg-slate-50 dark:bg-zinc-955 border border-slate-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-zinc-200 focus:outline-hidden font-bold"
+                        />
+                      </div>
+                      <div className="flex flex-col justify-end pb-1.5">
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={offerIsFlash}
+                            onChange={(e) => setOfferIsFlash(e.target.checked)}
+                            className="w-4 h-4 rounded-md text-brand-orange focus:ring-brand-orange"
+                          />
+                          <span className="text-[10px] text-slate-650 dark:text-zinc-400 font-bold">
+                            ⚡ Es Oferta Flash
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[9px] font-black uppercase tracking-wider text-slate-400 dark:text-zinc-500 block mb-1">
+                        Imagen de la Oferta (.png, .jpg)
+                      </label>
+                      <div className="relative border border-dashed border-slate-200 dark:border-zinc-850 hover:border-brand-orange/60 dark:hover:border-indigo-400/60 rounded-2xl p-2 text-center transition-colors">
+                        {offerImageBase64 ? (
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <img
+                                src={offerImageBase64}
+                                alt="Offer Preview"
+                                className="w-8 h-8 rounded-lg object-cover border border-slate-100 dark:border-zinc-800"
+                              />
+                              <span className="text-[10px] font-bold text-slate-700 dark:text-zinc-300">¡Imagen cargada!</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setOfferImageBase64(null)}
+                              className="p-1 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-400 hover:text-red-500 rounded-lg transition-colors text-[10px] font-bold cursor-pointer"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        ) : (
+                          <label className="cursor-pointer block py-0.5">
+                            <span className="text-[10px] text-brand-orange dark:text-indigo-400 font-extrabold hover:underline">
+                              📂 Subir Foto de la Oferta
+                            </span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    setOfferImageBase64(reader.result as string);
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                              className="hidden"
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* STEP 4: Preview and Confirmation */}
+            {regStep === 4 && (
+              <div className="space-y-4 animate-in fade-in duration-200 text-left">
+                <p className="text-xs text-slate-600 dark:text-zinc-350 font-semibold text-center mb-1">
                   Revisá la tarjeta de presentación de tu local comercial:
                 </p>
 
                 {/* Previews the registered shop card */}
                 <div className="p-4 bg-slate-900 text-white rounded-2xl border border-slate-800 flex items-center gap-4 shadow-xl">
-                  <div className="w-14 h-14 bg-brand-orange rounded-xl flex items-center justify-center text-3xl font-bold shadow-md shrink-0">
-                    {shopLogo}
-                  </div>
+                  {shopLogoBase64 ? (
+                    <img
+                      src={shopLogoBase64}
+                      alt="Custom Shop Logo"
+                      className="w-14 h-14 rounded-xl object-cover border border-slate-800 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 bg-brand-orange rounded-xl flex items-center justify-center text-3xl font-bold shadow-md shrink-0">
+                      {shopLogo}
+                    </div>
+                  )}
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 mb-1">
                       <span className="text-[8px] bg-brand-orange text-white font-extrabold uppercase px-1.5 py-0.5 rounded-full">
@@ -599,12 +907,35 @@ export default function MyProfileTab({
                         ● ABIERTO
                       </span>
                     </div>
-                    <h4 className="font-display font-black text-sm truncate">{shopName}</h4>
+                    <h4 className="font-display font-black text-sm truncate text-white">{shopName}</h4>
                     <p className="text-[9px] text-slate-300 truncate mt-0.5 flex items-center gap-0.5">
                       <MapPin className="w-2.5 h-2.5 text-slate-400" /> {shopAddress} ({shopZone})
                     </p>
                   </div>
                 </div>
+
+                {addInitialOffer && offerTitle && (
+                  <div className="p-3 bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl space-y-2">
+                    <span className="text-[9px] font-black bg-indigo-500 text-white px-2 py-0.5 rounded-full uppercase">
+                      🎁 Oferta Inicial Vinculada
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {offerImageBase64 && (
+                        <img
+                          src={offerImageBase64}
+                          alt="Offer preview"
+                          className="w-10 h-10 rounded-lg object-cover border border-slate-200 dark:border-zinc-800 shrink-0"
+                        />
+                      )}
+                      <div>
+                        <h5 className="text-xs font-bold text-slate-800 dark:text-zinc-200">{offerTitle}</h5>
+                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-medium leading-tight">
+                          Precio Especial: <strong className="text-green-600 dark:text-green-400">${parseFloat(offerDiscountPrice)}</strong> <span className="line-through text-slate-400">${parseFloat(offerOriginalPrice)}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="bg-slate-50 dark:bg-zinc-950 p-3.5 rounded-2xl border border-slate-100 dark:border-zinc-850 space-y-2 text-xs">
                   <div className="flex justify-between font-semibold">
@@ -645,7 +976,7 @@ export default function MyProfileTab({
                 </button>
               )}
 
-              {regStep < 3 ? (
+              {regStep < 4 ? (
                 <button
                   onClick={handleNextStep}
                   className="flex-1 py-2.5 bg-brand-orange hover:bg-brand-orange/95 dark:bg-indigo-650 dark:hover:bg-indigo-700 text-white font-extrabold rounded-xl shadow-md transition-transform hover:translate-y-[-1px] text-xs flex items-center justify-center gap-1.5 cursor-pointer"

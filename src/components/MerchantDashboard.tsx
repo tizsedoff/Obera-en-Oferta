@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Store, Plus, TrendingUp, Users, QrCode, Trash2, CheckCircle, AlertCircle, Eye, RefreshCw, Sparkles, ChevronRight, Upload, Image, X } from 'lucide-react';
+import { Store, Plus, TrendingUp, Users, QrCode, Trash2, CheckCircle, AlertCircle, Eye, RefreshCw, Sparkles, ChevronRight, Upload, Image, X, Camera, Keyboard } from 'lucide-react';
 import { Offer, Shop } from '../types';
 import ShopLogo from './ShopLogo';
 
 interface MerchantDashboardProps {
   myOffers: Offer[];
-  myShop: Shop;
+  myShop: Shop | null | undefined;
   onAddOffer: (newOffer: Omit<Offer, 'id' | 'shopId' | 'shopName' | 'views' | 'couponsClaimed'>) => void;
   onDeleteOffer: (id: string) => void;
 }
@@ -19,6 +19,124 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
   const [expiryDate, setExpiryDate] = useState('2026-07-20');
   const [hasQrCoupon, setHasQrCoupon] = useState(true);
   const [isFlashSale, setIsFlashSale] = useState(false);
+
+  // Live QR Code coupon validation states
+  const [activeScannerTab, setActiveScannerTab] = useState<'scan' | 'manual'>('scan');
+  const [manualCode, setManualCode] = useState('');
+  const [isScanning, setIsScanning] = useState(false);
+  const [scannerInstance, setScannerInstance] = useState<any>(null);
+  const [scanResult, setScanResult] = useState<{ success: boolean; message: string; data?: any } | null>(null);
+  const [scanLoading, setScanLoading] = useState(false);
+
+  React.useEffect(() => {
+    return () => {
+      if (scannerInstance) {
+        try {
+          scannerInstance.stop().catch((e: any) => console.log("Clean stop error", e));
+        } catch (e) {}
+      }
+    };
+  }, [scannerInstance]);
+
+  const startCameraScan = () => {
+    setScanResult(null);
+    setIsScanning(true);
+    
+    setTimeout(async () => {
+      try {
+        const { Html5Qrcode } = await import('html5-qrcode');
+        const html5QrCode = new Html5Qrcode("coupon-reader-box");
+        setScannerInstance(html5QrCode);
+
+        html5QrCode.start(
+          { facingMode: "environment" },
+          {
+            fps: 10,
+            qrbox: (width, height) => {
+              const size = Math.min(width, height) * 0.75;
+              return { width: size, height: size };
+            }
+          },
+          (decodedText) => {
+            html5QrCode.stop().then(() => {
+              setIsScanning(false);
+              setScannerInstance(null);
+              handleValidateCoupon(decodedText);
+            }).catch((err) => {
+              console.error("Stop scan error", err);
+              setIsScanning(false);
+              handleValidateCoupon(decodedText);
+            });
+          },
+          () => {
+            // verbose error logs can be bypassed
+          }
+        ).catch((err) => {
+          console.error("Camera start failed:", err);
+          setIsScanning(false);
+          setScanResult({
+            success: false,
+            message: "No se pudo acceder a la cámara. Por favor asegurate de dar permisos de cámara o ingresá el código de cupón manualmente."
+          });
+        });
+      } catch (err) {
+        console.error("Loader failed", err);
+        setIsScanning(false);
+      }
+    }, 150);
+  };
+
+  const stopCameraScan = () => {
+    if (scannerInstance) {
+      scannerInstance.stop().then(() => {
+        setIsScanning(false);
+        setScannerInstance(null);
+      }).catch((err: any) => {
+        console.error(err);
+        setIsScanning(false);
+        setScannerInstance(null);
+      });
+    } else {
+      setIsScanning(false);
+    }
+  };
+
+  const handleValidateCoupon = async (code: string) => {
+    if (!code || !code.trim()) return;
+    setScanLoading(true);
+    setScanResult(null);
+    try {
+      const res = await fetch("/api/coupons/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scannedCode: code.trim() })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setScanResult({
+          success: true,
+          message: `✅ ¡CUPÓN DESACTIVADO CON ÉXITO! El beneficio "${data.offerTitle}" ha sido validado correctamente.`,
+          data
+        });
+        setManualCode('');
+        
+        // Dispatch instant event to fetch updated database offers
+        window.dispatchEvent(new CustomEvent('refresh-live-data'));
+      } else {
+        setScanResult({
+          success: false,
+          message: data.error || "No se pudo validar el cupón."
+        });
+      }
+    } catch (err) {
+      setScanResult({
+        success: false,
+        message: "Error de conexión con el servidor. Intentá de nuevo."
+      });
+    } finally {
+      setScanLoading(false);
+    }
+  };
   
   // Custom image from gallery/device files
   const [customImage, setCustomImage] = useState<string | null>(null);
@@ -99,7 +217,7 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
         
         <div className="flex flex-col sm:flex-row sm:items-center gap-5 relative z-10">
           <div className="h-16 w-16 rounded-2xl bg-brand-orange dark:bg-indigo-600 text-white text-3xl font-bold flex flex-wrap items-center justify-center shadow-lg shadow-orange-500/10 transition-transform duration-500 group-hover:rotate-6 overflow-hidden shrink-0">
-            <ShopLogo logo={myShop.logo} className="text-3xl" fallbackSize="w-14 h-14" />
+            <ShopLogo logo={myShop?.logo} className="text-3xl" fallbackSize="w-14 h-14" />
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
@@ -110,9 +228,9 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
                 ● Activo
               </span>
             </div>
-            <h2 className="font-display font-black text-2xl text-white tracking-tight">{myShop.name}</h2>
+            <h2 className="font-display font-black text-2xl text-white tracking-tight">{myShop?.name || 'Mi Comercio'}</h2>
             <p className="text-xs text-slate-300 flex items-center gap-1 mt-0.5">
-              📍 {myShop.address}
+              📍 {myShop?.address || 'Oberá, Misiones'}
             </p>
           </div>
         </div>
@@ -436,6 +554,150 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
 
         {/* Right Column (Currently Published Campaigns list) */}
         <div className="space-y-8">
+
+          {/* VALIDADOR DE CUPONES QR EN VIVO */}
+          <div className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-850 rounded-3xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-50 dark:border-zinc-850 pb-3">
+              <div className="p-1.5 bg-brand-orange/10 dark:bg-indigo-500/10 text-brand-orange dark:text-indigo-400 rounded-lg">
+                <QrCode className="w-4 h-4 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="font-display font-black text-sm text-slate-900 dark:text-zinc-100 tracking-tight">
+                  Validador de Cupones
+                </h3>
+                <p className="text-[10px] text-slate-450 dark:text-zinc-500 font-bold uppercase tracking-wider">
+                  Desactivación de códigos de clientes
+                </p>
+              </div>
+            </div>
+
+            {/* Selector de modo */}
+            <div className="flex bg-slate-50 dark:bg-zinc-950 p-1 rounded-xl border border-slate-100 dark:border-zinc-850">
+              <button
+                type="button"
+                onClick={() => {
+                  stopCameraScan();
+                  setActiveScannerTab('scan');
+                  setScanResult(null);
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                  activeScannerTab === 'scan'
+                    ? 'bg-white dark:bg-zinc-900 text-brand-orange dark:text-indigo-400 shadow-xs'
+                    : 'text-slate-500 dark:text-zinc-400'
+                }`}
+              >
+                <Camera className="w-3.5 h-3.5" />
+                Escáner QR Cámara
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  stopCameraScan();
+                  setActiveScannerTab('manual');
+                  setScanResult(null);
+                }}
+                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                  activeScannerTab === 'manual'
+                    ? 'bg-white dark:bg-zinc-900 text-brand-orange dark:text-indigo-400 shadow-xs'
+                    : 'text-slate-500 dark:text-zinc-400'
+                }`}
+              >
+                <Keyboard className="w-3.5 h-3.5" />
+                Ingresar Código Manual
+              </button>
+            </div>
+
+            {/* TAB: CÁMARA */}
+            {activeScannerTab === 'scan' && (
+              <div className="space-y-3">
+                {isScanning ? (
+                  <div className="space-y-3">
+                    <div className="relative rounded-2xl overflow-hidden bg-black aspect-square max-w-xs mx-auto border-2 border-brand-orange dark:border-indigo-500 shadow-lg">
+                      <div id="coupon-reader-box" className="w-full h-full object-cover" />
+                      
+                      {/* Laser scanning overlay line */}
+                      <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-bounce" style={{ animationDuration: '3s' }} />
+                      <div className="absolute inset-4 border border-white/20 rounded-xl pointer-events-none flex items-center justify-center">
+                        <div className="w-44 h-44 border-2 border-dashed border-white/40 rounded-lg animate-pulse" />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={stopCameraScan}
+                      className="w-full py-2.5 bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-900/30 text-red-650 dark:text-red-400 font-extrabold rounded-xl text-xs transition-colors cursor-pointer"
+                    >
+                      🛑 Detener Cámara
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center p-5 border border-dashed border-slate-100 dark:border-zinc-800 rounded-2xl space-y-3">
+                    <div className="w-12 h-12 bg-slate-50 dark:bg-zinc-950 text-slate-400 dark:text-zinc-500 border border-slate-100 dark:border-zinc-850 rounded-full flex items-center justify-center mx-auto text-lg">
+                      📸
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed max-w-xs mx-auto">
+                      Escaneá desde tu celular el código QR de cupón que le figura al cliente para validarlo y desactivarlo.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={startCameraScan}
+                      className="py-2.5 px-4 bg-brand-orange hover:bg-brand-orange/95 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs shadow-md transition-transform hover:scale-102 cursor-pointer flex items-center justify-center gap-1.5 mx-auto"
+                    >
+                      <Camera className="w-4 h-4" /> Iniciar Escáner en Vivo
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB: MANUAL */}
+            {activeScannerTab === 'manual' && (
+              <div className="space-y-3">
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400 leading-relaxed">
+                  ¿La cámara no funciona o estás en PC? Ingresá el identificador de cupón que el usuario tiene en pantalla:
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Ej: coupon_1720542304123"
+                    value={manualCode}
+                    onChange={(e) => setManualCode(e.target.value)}
+                    className="flex-1 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 dark:text-zinc-200 uppercase focus:outline-hidden focus:border-brand-orange dark:focus:border-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleValidateCoupon(manualCode)}
+                    disabled={scanLoading || !manualCode.trim()}
+                    className="px-4 bg-brand-orange dark:bg-indigo-600 hover:bg-brand-orange/95 text-white font-extrabold rounded-xl text-xs shadow-xs disabled:opacity-50 transition-colors cursor-pointer flex items-center justify-center gap-1"
+                  >
+                    {scanLoading ? 'Validando...' : 'Validar'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* RESULTADOS DE LA VALIDACIÓN */}
+            {scanResult && (
+              <div className={`p-4 rounded-2xl border text-xs leading-normal animate-scale-up ${
+                scanResult.success
+                  ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-150/20 text-emerald-850 dark:text-emerald-300'
+                  : 'bg-red-50 dark:bg-red-950/20 border-red-150/20 text-red-850 dark:text-red-300'
+              }`}>
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base shrink-0">{scanResult.success ? '🎉' : '❌'}</span>
+                  <div className="space-y-1">
+                    <p className="font-bold">{scanResult.message}</p>
+                    {scanResult.success && scanResult.data && (
+                      <div className="text-[10px] opacity-90 border-t border-emerald-200/40 pt-1.5 mt-1.5 space-y-0.5">
+                        <p>💡 <strong>Oferta:</strong> {scanResult.data.offerTitle}</p>
+                        <p>💰 <strong>Ahorro para el Cliente:</strong> El cliente obtuvo el descuento pactado.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           
           <div className="bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-850 rounded-3xl p-6 shadow-xs transition-all duration-300 hover:shadow-md">
             <h3 className="font-display font-bold text-slate-900 dark:text-zinc-50 text-base mb-4 flex items-center justify-between">

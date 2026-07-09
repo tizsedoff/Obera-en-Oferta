@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, QrCode, Phone, CheckCircle, Info, Bookmark, ExternalLink, RefreshCw, Smartphone, Star } from 'lucide-react';
 
 import { Shop, Offer, Notification, TabType, Category, MapConfig, SiteConfig } from './types';
-import { INITIAL_SHOPS, INITIAL_OFFERS, INITIAL_NOTIFICATIONS, CATEGORIES_STORY, ZONES } from './data';
+import { INITIAL_NOTIFICATIONS, CATEGORIES_STORY, ZONES } from './data';
 
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
@@ -18,6 +18,7 @@ import OfferDetailModal from './components/OfferDetailModal';
 import LoginScreen from './components/LoginScreen';
 import AiChatbot from './components/AiChatbot';
 import AdminPanel from './components/AdminPanel';
+import VisitorRegisterPromptModal from './components/VisitorRegisterPromptModal';
 
 export default function App() {
   // Loading/Welcome state
@@ -65,22 +66,34 @@ export default function App() {
   }, [darkMode]);
 
   // User Authentication role state
-  const [userRole, setUserRole] = useState<'customer' | 'merchant' | null>(() => {
+  const [userRole, setUserRole] = useState<'customer' | 'merchant' | 'visitor' | null>(() => {
     const saved = localStorage.getItem('obera_ofertas_user_role');
-    return (saved === 'customer' || saved === 'merchant') ? saved : null;
+    return (saved === 'customer' || saved === 'merchant' || saved === 'visitor') ? (saved as any) : null;
   });
 
   const [userEmail, setUserEmail] = useState<string>(() => {
-    return localStorage.getItem('obera_ofertas_user_email') || 'tizsedoff@gmail.com';
+    return localStorage.getItem('obera_ofertas_user_email') || '';
   });
 
-  const handleLogin = (role: 'customer' | 'merchant', email?: string) => {
+  const handleLogin = (role: 'customer' | 'merchant' | 'visitor', email?: string, name?: string) => {
     setUserRole(role);
     localStorage.setItem('obera_ofertas_user_role', role);
     
-    const resolvedEmail = email || (role === 'merchant' ? 'yerbamate@obera.com' : 'tizsedoff@gmail.com');
+    const resolvedEmail = email || (role === 'merchant' ? 'yerbamate@obera.com' : (role === 'visitor' ? '' : 'tizsedoff@gmail.com'));
     setUserEmail(resolvedEmail);
-    localStorage.setItem('obera_ofertas_user_email', resolvedEmail);
+    if (resolvedEmail) {
+      localStorage.setItem('obera_ofertas_user_email', resolvedEmail);
+    } else {
+      localStorage.removeItem('obera_ofertas_user_email');
+    }
+
+    if (name) {
+      localStorage.setItem('obera_ofertas_user_name', name);
+    } else if (role === 'visitor') {
+      localStorage.setItem('obera_ofertas_user_name', 'Invitado');
+    } else {
+      localStorage.removeItem('obera_ofertas_user_name');
+    }
 
     if (role === 'merchant') {
       setActiveTab('myshop');
@@ -91,21 +104,35 @@ export default function App() {
 
   const handleLogout = () => {
     setUserRole(null);
-    setUserEmail('tizsedoff@gmail.com');
+    setUserEmail('');
     localStorage.removeItem('obera_ofertas_user_role');
     localStorage.removeItem('obera_ofertas_user_email');
+    localStorage.removeItem('obera_ofertas_user_name');
+  };
+
+  // Live API Fetcher function
+  const fetchLiveData = async () => {
+    try {
+      const [shopsRes, offersRes] = await Promise.all([
+        fetch('/api/shops'),
+        fetch('/api/offers')
+      ]);
+      if (shopsRes.ok) {
+        const shopsData = await shopsRes.json();
+        setShops(shopsData);
+      }
+      if (offersRes.ok) {
+        const offersData = await offersRes.json();
+        setOffers(offersData);
+      }
+    } catch (err) {
+      console.error("Error loading live database data from API:", err);
+    }
   };
 
   // Persistence backed collections
-  const [shops, setShops] = useState<Shop[]>(() => {
-    const saved = localStorage.getItem('obera_ofertas_shops');
-    return saved ? JSON.parse(saved) : INITIAL_SHOPS;
-  });
-
-  const [offers, setOffers] = useState<Offer[]>(() => {
-    const saved = localStorage.getItem('obera_ofertas_offers');
-    return saved ? JSON.parse(saved) : INITIAL_OFFERS;
-  });
+  const [shops, setShops] = useState<Shop[]>([]);
+  const [offers, setOffers] = useState<Offer[]>([]);
 
   const [notifications, setNotifications] = useState<Notification[]>(() => {
     const saved = localStorage.getItem('obera_ofertas_notifications');
@@ -150,6 +177,7 @@ export default function App() {
   // Pop-up details states
   const [selectedCouponOffer, setSelectedCouponOffer] = useState<Offer | null>(null);
   const [selectedDetailOffer, setSelectedDetailOffer] = useState<Offer | null>(null);
+  const [showVisitorRegisterPrompt, setShowVisitorRegisterPrompt] = useState(false);
 
   // Success Claim toast
   const [showToast, setShowToast] = useState<string | null>(null);
@@ -171,14 +199,19 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Sync to localStorage on update
+  // Fetch database data on mount and subscribe to refresh events
   useEffect(() => {
-    localStorage.setItem('obera_ofertas_shops', JSON.stringify(shops));
-  }, [shops]);
+    fetchLiveData();
 
-  useEffect(() => {
-    localStorage.setItem('obera_ofertas_offers', JSON.stringify(offers));
-  }, [offers]);
+    const handleRefresh = () => {
+      fetchLiveData();
+    };
+
+    window.addEventListener('refresh-live-data', handleRefresh);
+    return () => {
+      window.removeEventListener('refresh-live-data', handleRefresh);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('obera_ofertas_notifications', JSON.stringify(notifications));
@@ -237,54 +270,139 @@ export default function App() {
     setTimeout(() => setShowToast(null), 3500);
   };
 
-  // Upgrade customer to merchant role
-  const handleUpgradeToMerchant = () => {
-    setUserRole('merchant');
-    localStorage.setItem('obera_ofertas_user_role', 'merchant');
-    setActiveTab('myshop');
+  // Upgrade customer to merchant role & create real shop in Supabase
+  const handleUpgradeToMerchant = async (
+    shopData: Omit<Shop, 'id' | 'rating' | 'isOpen'> & { base64Logo?: string | null },
+    initialOffer?: {
+      title: string;
+      description: string;
+      originalPrice: number;
+      discountPrice: number;
+      category: string;
+      expiryDate: string;
+      hasQrCoupon: boolean;
+      isFlashSale: boolean;
+      base64Image: string | null;
+    } | null
+  ) => {
+    try {
+      const res = await fetch("/api/shops", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: shopData.name,
+          category: shopData.category,
+          zone: shopData.zone,
+          logo: shopData.logo,
+          address: shopData.address,
+          phone: shopData.phone,
+          latitude: shopData.latitude,
+          longitude: shopData.longitude,
+          base64Logo: shopData.base64Logo,
+          initialOffer: initialOffer || null
+        })
+      });
 
-    setShowToast('🚀 ¡Negocio Registrado! Bienvenidos a Oberá en Oferta.');
-    setTimeout(() => setShowToast(null), 4000);
+      if (!res.ok) {
+        throw new Error("No se pudo registrar el negocio en el servidor.");
+      }
 
-    const newNotif: Notification = {
-      id: `notif-upgrade-${Date.now()}`,
-      text: `🎉 ¡Bienvenido! Tu negocio ahora está verificado en la plataforma. Comenzá a publicar ofertas en tu local Yerba Mate & Delicias Misioneras.`,
-      time: 'Hace 1 min',
-      isRead: false,
-      type: 'new_shop'
-    };
-    setNotifications(prev => [newNotif, ...prev]);
+      const registeredShop = await res.json();
+      
+      setUserRole('merchant');
+      localStorage.setItem('obera_ofertas_user_role', 'merchant');
+      
+      if (registeredShop && registeredShop.id) {
+        setMyShopId(registeredShop.id);
+        localStorage.setItem('obera_ofertas_my_shop_id', registeredShop.id);
+      }
+      
+      setActiveTab('myshop');
+
+      setShowToast('🚀 ¡Negocio Registrado! Bienvenidos a Oberá en Oferta.');
+      setTimeout(() => setShowToast(null), 4000);
+
+      const newNotif: Notification = {
+        id: `notif-upgrade-${Date.now()}`,
+        text: `🎉 ¡Bienvenido! Tu negocio "${shopData.name}" ahora está verificado en la plataforma. Comenzá a publicar ofertas.`,
+        time: 'Hace 1 min',
+        isRead: false,
+        type: 'new_shop'
+      };
+      setNotifications(prev => [newNotif, ...prev]);
+
+      // Re-fetch all data from database so it's fully synchronized
+      await fetchLiveData();
+
+    } catch (err: any) {
+      console.error(err);
+      setShowToast(`❌ Error: ${err.message || 'No se pudo conectar con el servidor.'}`);
+      setTimeout(() => setShowToast(null), 4000);
+    }
   };
 
-  // Add new offer via Merchant panel
-  const handleAddOffer = (newOfferData: Omit<Offer, 'id' | 'shopId' | 'shopName' | 'views' | 'couponsClaimed'>) => {
-    const myShop = shops[0]; // Bound to the merchant shop (Yerba Mate & Delicias Misioneras)
-    const newOffer: Offer = {
-      ...newOfferData,
-      id: `offer-${Date.now()}`,
-      shopId: myShop.id,
-      shopName: myShop.name,
-      views: Math.floor(Math.random() * 25) + 5, // simulate initial traction
-      couponsClaimed: 0
-    };
+  // Add new offer via Merchant panel in database
+  const handleAddOffer = async (newOfferData: Omit<Offer, 'id' | 'shopId' | 'shopName' | 'views' | 'couponsClaimed'>) => {
+    try {
+      const res = await fetch("/api/offers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...newOfferData,
+          shopId: activeMerchantShop?.id || 'shop-fallback',
+          shopName: activeMerchantShop?.name || 'Yerba Mate & Delicias Misioneras'
+        })
+      });
 
-    setOffers(prev => [newOffer, ...prev]);
+      if (!res.ok) {
+        throw new Error("Error al publicar la oferta.");
+      }
 
-    // Send simulated flash notification so the top bell badge lights up
-    const newNotif: Notification = {
-      id: `notif-${Date.now()}`,
-      text: `📢 ${myShop.name} acaba de publicar una súper oferta: ¡${newOffer.title}!`,
-      time: 'Hace 1 min',
-      isRead: false,
-      type: newOffer.hasQrCoupon ? 'coupon' : 'flash'
-    };
+      const savedOffer = await res.json();
 
-    setNotifications(prev => [newNotif, ...prev]);
+      // Show toast
+      setShowToast('📢 ¡Oferta publicada con éxito en Oberá!');
+      setTimeout(() => setShowToast(null), 3000);
+
+      // Send simulated flash notification so the top bell badge lights up
+      const newNotif: Notification = {
+        id: `notif-${Date.now()}`,
+        text: `📢 ${activeMerchantShop?.name || 'Comercio'} acaba de publicar una súper oferta: ¡${savedOffer.title}!`,
+        time: 'Hace 1 min',
+        isRead: false,
+        type: savedOffer.hasQrCoupon ? 'coupon' : 'flash'
+      };
+
+      setNotifications(prev => [newNotif, ...prev]);
+
+      // Re-fetch everything to guarantee state alignment
+      await fetchLiveData();
+
+    } catch (err: any) {
+      console.error("Error creating offer:", err);
+      setShowToast(`❌ Error: ${err.message}`);
+      setTimeout(() => setShowToast(null), 4000);
+    }
   };
 
-  // Delete offer
-  const handleDeleteOffer = (id: string) => {
-    setOffers(prev => prev.filter(o => o.id !== id));
+  // Delete offer from database and memory
+  const handleDeleteOffer = async (id: string) => {
+    try {
+      const res = await fetch(`/api/offers/${id}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        setOffers(prev => prev.filter(o => o.id !== id));
+        setShowToast('🗑️ Oferta eliminada correctamente.');
+        setTimeout(() => setShowToast(null), 3000);
+      } else {
+        throw new Error("No se pudo eliminar de la base de datos.");
+      }
+    } catch (err: any) {
+      console.error("Error deleting offer:", err);
+      // Fallback local delete for safety
+      setOffers(prev => prev.filter(o => o.id !== id));
+    }
   };
 
   // Notification handlers
@@ -331,9 +449,18 @@ export default function App() {
     }
   };
 
+  // Open coupon with verification check (coupons only for users with account)
+  const handleOpenCoupon = (offer: Offer) => {
+    if (userRole === 'visitor') {
+      setShowVisitorRegisterPrompt(true);
+    } else {
+      setSelectedCouponOffer(offer);
+    }
+  };
+
   // Active Merchant Shop (for demo purposes, we tie the merchant dashboard to shop-1 "Yerba Mate & Delicias Misioneras")
-  const activeMerchantShop = shops[0];
-  const merchantOffers = offers.filter(o => o.shopId === activeMerchantShop.id);
+  const activeMerchantShop = shops[0] || null;
+  const merchantOffers = activeMerchantShop ? offers.filter(o => o.shopId === activeMerchantShop.id) : [];
 
   if (isLoadingApp) {
     return (
@@ -518,7 +645,7 @@ export default function App() {
                 categories={categories}
                 siteConfig={siteConfig}
                 onOpenOffer={(offer) => setSelectedDetailOffer(offer)}
-                onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
+                onOpenCoupon={handleOpenCoupon}
                 onSelectCategoryStory={handleSelectCategoryStory}
                 onSelectShopOnMap={handleSelectShopOnMap}
                 setActiveTab={setActiveTab}
@@ -530,7 +657,7 @@ export default function App() {
                 offers={offers}
                 shops={shops}
                 categories={categories}
-                onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
+                onOpenCoupon={handleOpenCoupon}
                 onOpenOffer={(offer) => setSelectedDetailOffer(offer)}
                 onSelectCategoryStory={handleSelectCategoryStory}
                 onSelectShopOnMap={handleSelectShopOnMap}
@@ -548,7 +675,7 @@ export default function App() {
                 categories={categories}
                 zones={zones}
                 onOpenOffer={(offer) => setSelectedDetailOffer(offer)}
-                onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
+                onOpenCoupon={handleOpenCoupon}
                 selectedCategory={selectedCategory}
                 setSelectedCategory={setSelectedCategory}
               />
@@ -603,13 +730,13 @@ export default function App() {
               <MyProfileTab
                 offers={offers}
                 shops={shops}
-                categories={categories}
-                zones={zones}
                 claimedCouponIds={claimedCouponIds}
-                onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
+                onOpenCoupon={handleOpenCoupon}
                 onUpgradeToMerchant={handleUpgradeToMerchant}
                 onLogout={handleLogout}
                 userEmail={userEmail}
+                categories={categories}
+                zones={zones}
               />
             )}
           </>
@@ -645,7 +772,17 @@ export default function App() {
           offer={selectedDetailOffer}
           shop={shops.find(s => s.id === selectedDetailOffer.shopId)}
           onClose={() => setSelectedDetailOffer(null)}
-          onOpenCoupon={(offer) => setSelectedCouponOffer(offer)}
+          onOpenCoupon={handleOpenCoupon}
+        />
+      )}
+
+      {showVisitorRegisterPrompt && (
+        <VisitorRegisterPromptModal
+          onClose={() => setShowVisitorRegisterPrompt(false)}
+          onRegisterClick={() => {
+            setShowVisitorRegisterPrompt(false);
+            handleLogout();
+          }}
         />
       )}
 
