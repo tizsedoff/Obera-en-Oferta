@@ -59,10 +59,14 @@ function mapOfferToDb(offer: any) {
   };
 }
 
+// NOTA: nombres de bucket ajustados a los reales creados en Supabase
+const LOGOS_BUCKET = "obera en oferta logos";
+const IMAGES_BUCKET = "obera en oferta fotos";
+
 export default async function handler(req: any, res: any) {
   const supabaseUrl = process.env.SUPABASE_URL || "";
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || "";
-  
+
   let supabase: any = null;
   if (supabaseUrl && supabaseServiceKey) {
     try {
@@ -80,7 +84,7 @@ export default async function handler(req: any, res: any) {
       const mimeType = match[1];
       const base64Data = match[2];
       const buffer = Buffer.from(base64Data, "base64");
-      
+
       const fileExt = mimeType.split("/")[1] || "png";
       const fileName = `uploads/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
 
@@ -109,19 +113,17 @@ export default async function handler(req: any, res: any) {
       try {
         const { data, error } = await supabase.from("negocios").select("*");
         if (error) throw error;
-        
+
         if (data && data.length > 0) {
           const formatted = data.map(mapDbToShop);
           return res.status(200).json(formatted);
         } else {
-          // Seed INITIAL_SHOPS to Supabase to make it user-ready
-          console.log("Supabase negocios table is empty inside serverless shops. Seeding INITIAL_SHOPS...");
           const dbShops = INITIAL_SHOPS.map(mapShopToDb);
           const { error: seedError } = await supabase.from("negocios").insert(dbShops);
           if (seedError) {
             console.error("Error seeding negocios table:", seedError);
           }
-          
+
           const formattedShops = INITIAL_SHOPS.map(s => ({
             ...s,
             id: toUUID(s.id, "shop")
@@ -150,7 +152,7 @@ export default async function handler(req: any, res: any) {
       let finalLogo = logo || "🛍️";
 
       if (base64Logo && base64Logo.startsWith("data:")) {
-        const uploadUrl = await uploadImageToSupabase(base64Logo, "logos");
+        const uploadUrl = await uploadImageToSupabase(base64Logo, LOGOS_BUCKET);
         if (uploadUrl) {
           finalLogo = uploadUrl;
         }
@@ -173,7 +175,6 @@ export default async function handler(req: any, res: any) {
 
       if (supabase) {
         const dbShop = mapShopToDb(newShop);
-        // Try to insert with optional columns if the schema has them, fallback otherwise
         const { error: fullError } = await supabase.from("negocios").insert([{
           ...dbShop,
           logo_url: finalLogo,
@@ -193,11 +194,10 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      // Handle linked initial offer insertion if provided
       if (initialOffer) {
         let finalOfferImage = "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80";
         if (initialOffer.base64Image && initialOffer.base64Image.startsWith("data:")) {
-          const uploadUrl = await uploadImageToSupabase(initialOffer.base64Image, "images");
+          const uploadUrl = await uploadImageToSupabase(initialOffer.base64Image, IMAGES_BUCKET);
           if (uploadUrl) {
             finalOfferImage = uploadUrl;
           }
@@ -235,6 +235,53 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json(newShop);
     } catch (err: any) {
       console.error("Error registering shop in shops handler:", err);
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
+  // PUT: editar negocio existente
+  if (req.method === "PUT") {
+    try {
+      const { id, name, category, address, phone, zone, base64Logo, logo } = req.body;
+      if (!id) {
+        return res.status(400).json({ error: "Falta el ID del negocio a editar." });
+      }
+
+      let finalLogo = logo;
+      if (base64Logo && base64Logo.startsWith("data:")) {
+        const uploadUrl = await uploadImageToSupabase(base64Logo, LOGOS_BUCKET);
+        if (uploadUrl) {
+          finalLogo = uploadUrl;
+        }
+      }
+
+      const updateData: any = {
+        nombre: name,
+        categoria: category,
+        direccion: address,
+        telefono: phone,
+        zona: zone
+      };
+      if (finalLogo) {
+        updateData.logo_url = finalLogo;
+        updateData.imagen_url = finalLogo;
+        updateData.logo = finalLogo;
+      }
+
+      if (supabase) {
+        const { error } = await supabase
+          .from("negocios")
+          .update(updateData)
+          .eq("id", toUUID(id, "shop"));
+        if (error) {
+          console.error("Error updating negocio:", error);
+          return res.status(500).json({ error: error.message });
+        }
+      }
+
+      return res.status(200).json({ success: true });
+    } catch (err: any) {
+      console.error("Error editing shop:", err);
       return res.status(500).json({ error: err.message });
     }
   }

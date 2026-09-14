@@ -76,6 +76,8 @@ function mapDbToOffer(row: any, allShops: any[]) {
   };
 }
 
+const IMAGES_BUCKET = "obera en oferta fotos";
+
 export default async function handler(req: any, res: any) {
   const supabaseUrl = process.env.SUPABASE_URL || "";
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || "";
@@ -182,7 +184,7 @@ export default async function handler(req: any, res: any) {
       let finalImage = image;
 
       if (base64Image && base64Image.startsWith("data:")) {
-        const uploadUrl = await uploadImageToSupabase(base64Image, "images");
+        const uploadUrl = await uploadImageToSupabase(base64Image, IMAGES_BUCKET);
         if (uploadUrl) {
           finalImage = uploadUrl;
         }
