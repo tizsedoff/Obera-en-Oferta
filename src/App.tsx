@@ -69,6 +69,16 @@ export default function App() {
 
   // User Authentication role state - se restaura desde localStorage para no perder la sesión al refrescar
   const [userRole, setUserRole] = useState<'customer' | 'merchant' | 'visitor' | null>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('accion') === 'registrarse') {
+        // Si vienen con intención explícita de registrarse (ej: link del chatbot),
+        // forzamos la pantalla de login/registro aunque ya haya una sesión guardada.
+        return null;
+      }
+    } catch {
+      // noop
+    }
     const saved = localStorage.getItem('obera_ofertas_user_role');
     if (saved === 'customer' || saved === 'merchant' || saved === 'visitor') {
       return saved;
@@ -554,7 +564,12 @@ export default function App() {
   }
 
   if (userRole === null) {
-    return <LoginScreen onLogin={handleLogin} />;
+    return (
+      <>
+        <LoginScreen onLogin={handleLogin} />
+        <AiChatbot shops={shops} offers={offers} />
+      </>
+    );
   }
 
   return (
