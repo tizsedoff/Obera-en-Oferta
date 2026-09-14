@@ -8,9 +8,10 @@ interface OfferDetailModalProps {
   shop: Shop | undefined;
   onClose: () => void;
   onOpenCoupon: (offer: Offer) => void;
+  onViewShop?: (shopId: string) => void;
 }
 
-export default function OfferDetailModal({ offer, shop, onClose, onOpenCoupon }: OfferDetailModalProps) {
+export default function OfferDetailModal({ offer, shop, onClose, onOpenCoupon, onViewShop }: OfferDetailModalProps) {
   const discountPercentage = Math.round(((offer.originalPrice - offer.discountPrice) / offer.originalPrice) * 100);
 
   // Generate customized WhatsApp pre-filled link
@@ -59,11 +60,16 @@ export default function OfferDetailModal({ offer, shop, onClose, onOpenCoupon }:
 
           {/* Shop details overlay at the bottom of the image */}
           <div className="absolute bottom-4 left-4 right-4 text-white">
-            <div className="flex items-center gap-2 mb-1.5">
+            <button
+              type="button"
+              onClick={() => shop && onViewShop?.(shop.id)}
+              disabled={!shop || !onViewShop}
+              className="flex items-center gap-2 mb-1.5 cursor-pointer disabled:cursor-default group/shop"
+            >
               <div className="flex items-center justify-center bg-white/20 dark:bg-black/30 rounded-lg backdrop-blur-xs border border-white/10 w-8 h-8 overflow-hidden shrink-0">
                 <ShopLogo logo={shop?.logo} className="text-xl" fallbackSize="w-6 h-6" />
               </div>
-              <span className="text-xs font-extrabold uppercase tracking-widest text-orange-200 dark:text-indigo-200 drop-shadow-xs">
+              <span className="text-xs font-extrabold uppercase tracking-widest text-orange-200 dark:text-indigo-200 drop-shadow-xs group-hover/shop:underline">
                 {shop?.name}
               </span>
               <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
@@ -71,7 +77,7 @@ export default function OfferDetailModal({ offer, shop, onClose, onOpenCoupon }:
               }`}>
                 {shop?.isOpen ? 'Abierto' : 'Cerrado'}
               </span>
-            </div>
+            </button>
             <h3 className="font-display font-black text-xl leading-snug drop-shadow-md">
               {offer.title}
             </h3>

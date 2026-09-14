@@ -15,6 +15,8 @@ import MerchantDashboard from './components/MerchantDashboard';
 import MyProfileTab from './components/MyProfileTab';
 import CouponModal from './components/CouponModal';
 import OfferDetailModal from './components/OfferDetailModal';
+import ShopsDirectory from './components/ShopsDirectory';
+import ShopProfileModal from './components/ShopProfileModal';
 import LoginScreen from './components/LoginScreen';
 import AiChatbot from './components/AiChatbot';
 import AdminPanel from './components/AdminPanel';
@@ -180,6 +182,7 @@ export default function App() {
   // Pop-up details states
   const [selectedCouponOffer, setSelectedCouponOffer] = useState<Offer | null>(null);
   const [selectedDetailOffer, setSelectedDetailOffer] = useState<Offer | null>(null);
+  const [selectedShopProfile, setSelectedShopProfile] = useState<Shop | null>(null);
   const [showVisitorRegisterPrompt, setShowVisitorRegisterPrompt] = useState(false);
 
   // Success Claim toast
@@ -713,6 +716,14 @@ export default function App() {
               />
             )}
 
+            {activeTab === 'shops' && (
+              <ShopsDirectory
+                shops={shops}
+                offers={offers}
+                onSelectShop={(shop) => setSelectedShopProfile(shop)}
+              />
+            )}
+
             {activeTab === 'map' && (
               <MapView
                 shops={shops}
@@ -806,6 +817,30 @@ export default function App() {
           shop={shops.find(s => s.id === selectedDetailOffer.shopId)}
           onClose={() => setSelectedDetailOffer(null)}
           onOpenCoupon={handleOpenCoupon}
+          onViewShop={(shopId) => {
+            const shop = shops.find(s => s.id === shopId);
+            if (shop) {
+              setSelectedShopProfile(shop);
+              setSelectedDetailOffer(null);
+            }
+          }}
+        />
+      )}
+
+      {selectedShopProfile && (
+        <ShopProfileModal
+          shop={selectedShopProfile}
+          offers={offers}
+          onClose={() => setSelectedShopProfile(null)}
+          onSelectOffer={(offer) => {
+            setSelectedShopProfile(null);
+            setSelectedDetailOffer(offer);
+          }}
+          onViewOnMap={(shopId) => {
+            setSelectedShopProfile(null);
+            setSelectedShopIdOnMap(shopId);
+            setActiveTab('map');
+          }}
         />
       )}
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Grid, Map, Store, User, Sparkles } from 'lucide-react';
+import { Home, Grid, Map, Store, User, Sparkles, Building2 } from 'lucide-react';
 import { TabType } from '../types';
 
 interface BottomNavProps {
@@ -14,6 +14,7 @@ export default function BottomNav({ activeTab, setActiveTab, notificationsCount,
     { id: 'home' as TabType, label: 'Inicio', icon: Home },
     { id: 'feed' as TabType, label: 'Feed 🔥', icon: Sparkles },
     { id: 'categories' as TabType, label: 'Categorías', icon: Grid },
+    { id: 'shops' as TabType, label: 'Negocios', icon: Building2 },
     { id: 'map' as TabType, label: 'Mapa', icon: Map },
     ...(userRole === 'merchant'
       ? [{ id: 'myshop' as TabType, label: 'Mi Negocio', icon: Store }]

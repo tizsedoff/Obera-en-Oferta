@@ -39,7 +39,7 @@ export interface Notification {
   type: 'flash' | 'coupon' | 'new_shop';
 }
 
-export type TabType = 'home' | 'feed' | 'categories' | 'map' | 'myshop' | 'myprofile';
+export type TabType = 'home' | 'feed' | 'categories' | 'map' | 'shops' | 'myshop' | 'myprofile';
 
 export interface Category {
   id: string;
