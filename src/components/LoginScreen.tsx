@@ -49,6 +49,20 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Términos y condiciones
+  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [hasScrolledTerms, setHasScrolledTerms] = useState(false);
+  const termsScrollRef = useRef<HTMLDivElement>(null);
+
+  const handleTermsScroll = () => {
+    const el = termsScrollRef.current;
+    if (!el) return;
+    const reachedBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    if (reachedBottom) {
+      setHasScrolledTerms(true);
+    }
+  };
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -130,8 +144,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         return;
       }
 
-      // If merchant, we create a business dynamically
-      let registeredShopId: string | null = null;
       if (role === 'merchant') {
         if (!shopName.trim()) {
           setError('Por favor, ingresá el nombre de fantasía de tu comercio.');
@@ -148,57 +160,13 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
           setLoading(false);
           return;
         }
-
-        try {
-          const shopResponse = await fetch('/api/shops', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: shopName.trim(),
-              category: shopCategory,
-              zone: shopZone,
-              logo: logoSelectionType === 'emoji' ? shopLogoEmoji : null,
-              address: shopAddress.trim(),
-              phone: shopPhone.trim(),
-              latitude: -27.4856,
-              longitude: -55.1193,
-              base64Logo: logoSelectionType === 'file' ? shopLogoBase64 : null
-            })
-          });
-
-          if (!shopResponse.ok) {
-            const errData = await shopResponse.json().catch(() => ({}));
-            throw new Error(errData.error || 'Ocurrió un error en el servidor al registrar el comercio.');
-          }
-
-          const createdShop = await shopResponse.json();
-          registeredShopId = createdShop.id;
-          if (registeredShopId) {
-            localStorage.setItem('obera_ofertas_my_shop_id', registeredShopId);
-          }
-        } catch (err: any) {
-          setError(`Error al registrar el comercio: ${err.message}`);
-          setLoading(false);
-          return;
-        }
       }
 
-      // Add registered credentials locally
-      users.push({
-        email: lowerEmail,
-        pass: password,
-        name: name.trim(),
-        role,
-      });
-      localStorage.setItem('obera_ofertas_registered_users', JSON.stringify(users));
-
-      // Fire global refresh so components pull new shop list from API instantly
-      window.dispatchEvent(new CustomEvent('refresh-live-data'));
-
-      setTimeout(() => {
-        setLoading(false);
-        onLogin(role, lowerEmail, name.trim());
-      }, 1000);
+      // Validaciones OK: mostramos los Términos y Condiciones antes de crear la cuenta
+      setLoading(false);
+      setHasScrolledTerms(false);
+      setShowTermsModal(true);
+      return;
 
     } else {
       // Sign In Flow
@@ -223,6 +191,68 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         onLogin(role, lowerEmail, matched.name);
       }, 800);
     }
+  };
+
+  const completeRegistration = async () => {
+    setShowTermsModal(false);
+    setLoading(true);
+    setError(null);
+
+    const lowerEmail = email.trim().toLowerCase();
+    const users = getRegisteredUsers();
+    let registeredShopId: string | null = null;
+
+    if (role === 'merchant') {
+      try {
+        const shopResponse = await fetch('/api/shops', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: shopName.trim(),
+            category: shopCategory,
+            zone: shopZone,
+            logo: logoSelectionType === 'emoji' ? shopLogoEmoji : null,
+            address: shopAddress.trim(),
+            phone: shopPhone.trim(),
+            latitude: -27.4856,
+            longitude: -55.1193,
+            base64Logo: logoSelectionType === 'file' ? shopLogoBase64 : null
+          })
+        });
+
+        if (!shopResponse.ok) {
+          const errData = await shopResponse.json().catch(() => ({}));
+          throw new Error(errData.error || 'Ocurrió un error en el servidor al registrar el comercio.');
+        }
+
+        const createdShop = await shopResponse.json();
+        registeredShopId = createdShop.id;
+        if (registeredShopId) {
+          localStorage.setItem('obera_ofertas_my_shop_id', registeredShopId);
+        }
+      } catch (err: any) {
+        setError(`Error al registrar el comercio: ${err.message}`);
+        setLoading(false);
+        return;
+      }
+    }
+
+    // Add registered credentials locally
+    users.push({
+      email: lowerEmail,
+      pass: password,
+      name: name.trim(),
+      role,
+    });
+    localStorage.setItem('obera_ofertas_registered_users', JSON.stringify(users));
+
+    // Fire global refresh so components pull new shop list from API instantly
+    window.dispatchEvent(new CustomEvent('refresh-live-data'));
+
+    setTimeout(() => {
+      setLoading(false);
+      onLogin(role, lowerEmail, name.trim());
+    }, 1000);
   };
 
   return (
@@ -637,6 +667,77 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         <p>© 2026 Oberá en Oferta • <a href="https://aps-web-tau.vercel.app/" target="_blank" rel="noopener noreferrer" className="underline font-bold text-slate-500 hover:text-brand-orange dark:text-zinc-400 dark:hover:text-indigo-400 transition-colors">APS DEVELOPER</a></p>
         <p className="mt-0.5 font-bold text-slate-500 dark:text-zinc-650">Hecho para potenciar el comercio de tierra colorada 🧉</p>
       </div>
+
+      {/* Modal de Términos y Condiciones */}
+      {showTermsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-xs">
+          <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-100 dark:border-zinc-800 max-h-[85vh] flex flex-col">
+            <div className="p-5 border-b border-slate-100 dark:border-zinc-800 shrink-0">
+              <h3 className="font-display font-black text-lg text-slate-900 dark:text-zinc-50">
+                Términos y Condiciones {role === 'merchant' ? 'para Comercios' : 'para Usuarios'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1">
+                Leé el documento completo hasta el final para poder aceptarlo.
+              </p>
+            </div>
+
+            <div
+              ref={termsScrollRef}
+              onScroll={handleTermsScroll}
+              className="p-5 space-y-4 overflow-y-auto text-sm text-slate-600 dark:text-zinc-300 leading-relaxed"
+            >
+              {role === 'merchant' ? (
+                <>
+                  <p className="font-bold text-slate-900 dark:text-zinc-100">TÉRMINOS Y CONDICIONES PARA COMERCIOS — OBERÁ EN OFERTA</p>
+                  <p><span className="font-bold">Responsabilidad exclusiva:</span> Sos el único responsable legal por la veracidad, los precios (con IVA incluido), el stock y la vigencia de los productos o servicios que publiques.</p>
+                  <p><span className="font-bold">Defensa del Consumidor:</span> Te comprometés a cumplir estrictamente con la Ley N° 24.240. Si un cliente va a tu local con la captura de pantalla de tu oferta vigente en la web, estás obligado a respetársela.</p>
+                  <p><span className="font-bold">Moderación y bajas:</span> La plataforma se reserva el derecho de pausar, modificar o borrar tu publicación o tu cuenta de forma inmediata si se detectan precios engañosos, información falsa, faltas de respeto o denuncias reiteradas de usuarios.</p>
+                  <p><span className="font-bold">Legalidad del comercio:</span> Garantizás contar con las habilitaciones municipales e inscripciones fiscales correspondientes (AFIP/ATM) para ejercer tu actividad comercial.</p>
+                  <p><span className="font-bold">Tus datos:</span> Tus datos de registro se tratan bajo la Ley N° 25.326 de Protección de Datos Personales para la gestión de tu perfil publicitario.</p>
+                  <p><span className="font-bold">Jurisdicción:</span> Ante cualquier conflicto legal derivado del servicio publicitario, las partes se someten a los Tribunales Ordinarios de Oberá, Misiones.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-bold text-slate-900 dark:text-zinc-100">TÉRMINOS Y CONDICIONES PARA USUARIOS — OBERÁ EN OFERTA</p>
+                  <p><span className="font-bold">Somos una vitrina publicitaria:</span> Oberá en Oferta no vende productos, no procesa pagos ni cobra comisiones. Toda compra o reserva se realiza directamente entre vos y el comercio local.</p>
+                  <p><span className="font-bold">Verificá antes de comprar:</span> Los comercios son los únicos responsables de los precios, el stock, la calidad y la vigencia de sus ofertas. Te recomendamos confirmar las condiciones con el local antes de pagar.</p>
+                  <p><span className="font-bold">Reportá problemas:</span> Si encontrás un precio falso, un comercio que no cumple o información engañosa, avisanos a través de nuestro botón de reporte para que podamos dar de baja la publicación.</p>
+                  <p><span className="font-bold">Tus datos están seguros:</span> Tus datos personales de navegación se protegen bajo la Ley N° 25.326 y se usan exclusivamente para mejorar tu experiencia en el sitio. No se venden a terceros.</p>
+                  <p><span className="font-bold">Jurisdicción:</span> Cualquier inconveniente legal con el uso de la web se resolverá ante los Tribunales de la ciudad de Oberá, Misiones.</p>
+                </>
+              )}
+              <p className="text-xs text-slate-400 dark:text-zinc-500 pt-2 border-t border-slate-100 dark:border-zinc-800">
+                — Fin del documento —
+              </p>
+            </div>
+
+            <div className="p-5 border-t border-slate-100 dark:border-zinc-800 shrink-0 space-y-2.5">
+              {!hasScrolledTerms && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold text-center flex items-center justify-center gap-1.5">
+                  <ChevronDown className="w-3.5 h-3.5 animate-bounce" /> Desplazate hasta el final para continuar
+                </p>
+              )}
+              <div className="flex gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(false)}
+                  className="flex-1 py-3 bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 font-bold rounded-2xl text-sm transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={completeRegistration}
+                  disabled={!hasScrolledTerms}
+                  className="flex-1 py-3 bg-brand-orange hover:bg-brand-orange/95 dark:bg-indigo-600 dark:hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold rounded-2xl text-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Check className="w-4 h-4" /> Acepto y me registro
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
