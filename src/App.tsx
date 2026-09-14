@@ -65,10 +65,18 @@ export default function App() {
     localStorage.setItem('obera_ofertas_dark_mode', String(darkMode));
   }, [darkMode]);
 
-  // User Authentication role state - always starts as null so that the login screen is presented on initial entry
-  const [userRole, setUserRole] = useState<'customer' | 'merchant' | 'visitor' | null>(null);
+  // User Authentication role state - se restaura desde localStorage para no perder la sesión al refrescar
+  const [userRole, setUserRole] = useState<'customer' | 'merchant' | 'visitor' | null>(() => {
+    const saved = localStorage.getItem('obera_ofertas_user_role');
+    if (saved === 'customer' || saved === 'merchant' || saved === 'visitor') {
+      return saved;
+    }
+    return null;
+  });
 
-  const [userEmail, setUserEmail] = useState<string>('');
+  const [userEmail, setUserEmail] = useState<string>(() => {
+    return localStorage.getItem('obera_ofertas_user_email') || '';
+  });
 
   const handleLogin = (role: 'customer' | 'merchant' | 'visitor', email?: string, name?: string) => {
     setUserRole(role);
@@ -400,6 +408,28 @@ export default function App() {
     }
   };
 
+  const handleEditShop = async (updatedData: { name: string; category: string; address: string; phone: string; zone: string; base64Logo?: string; logo?: string }) => {
+    if (!myShopId) return;
+    try {
+      const res = await fetch("/api/shops", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: myShopId, ...updatedData })
+      });
+      if (res.ok) {
+        setShowToast('✅ Datos del negocio actualizados.');
+        setTimeout(() => setShowToast(null), 3000);
+        await fetchLiveData();
+      } else {
+        throw new Error("No se pudo actualizar el negocio.");
+      }
+    } catch (err: any) {
+      console.error("Error editing shop:", err);
+      setShowToast('⚠️ No se pudo actualizar el negocio.');
+      setTimeout(() => setShowToast(null), 3000);
+    }
+  };
+
   // Notification handlers
   const handleMarkAsRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
@@ -700,6 +730,7 @@ export default function App() {
                   myOffers={merchantOffers}
                   onAddOffer={handleAddOffer}
                   onDeleteOffer={handleDeleteOffer}
+                  onEditShop={handleEditShop}
                 />
               ) : (
                 <div className="max-w-md mx-auto px-4 py-12 text-center space-y-6">

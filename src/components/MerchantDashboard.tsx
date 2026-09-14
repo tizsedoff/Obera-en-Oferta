@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Store, Plus, TrendingUp, Users, QrCode, Trash2, CheckCircle, AlertCircle, Eye, RefreshCw, Sparkles, ChevronRight, Upload, Image, X, Camera, Keyboard } from 'lucide-react';
+import { Store, Plus, TrendingUp, Users, QrCode, Trash2, CheckCircle, AlertCircle, Eye, RefreshCw, Sparkles, ChevronRight, Upload, Image, X, Camera, Keyboard, Pencil, Loader2 } from 'lucide-react';
 import { Offer, Shop } from '../types';
 import ShopLogo from './ShopLogo';
 
@@ -8,9 +8,49 @@ interface MerchantDashboardProps {
   myShop: Shop | null | undefined;
   onAddOffer: (newOffer: Omit<Offer, 'id' | 'shopId' | 'shopName' | 'views' | 'couponsClaimed'>) => void;
   onDeleteOffer: (id: string) => void;
+  onEditShop: (updatedData: { name: string; category: string; address: string; phone: string; zone: string; base64Logo?: string; logo?: string }) => void | Promise<void>;
 }
 
-export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDeleteOffer }: MerchantDashboardProps) {
+export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDeleteOffer, onEditShop }: MerchantDashboardProps) {
+  // Estado del modal de edición del negocio
+  const [showEditShopModal, setShowEditShopModal] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editZone, setEditZone] = useState('');
+  const [editLogoPreview, setEditLogoPreview] = useState<string | null>(null);
+  const [editBase64Logo, setEditBase64Logo] = useState<string | undefined>(undefined);
+  const [isSavingShop, setIsSavingShop] = useState(false);
+
+  const openEditShopModal = () => {
+    setEditName(myShop?.name || '');
+    setEditCategory(myShop?.category || '');
+    setEditAddress(myShop?.address || '');
+    setEditPhone(myShop?.phone || '');
+    setEditZone(myShop?.zone || '');
+    setEditLogoPreview(myShop?.logo || null);
+    setEditBase64Logo(undefined);
+    setShowEditShopModal(true);
+  };
+
+  const handleSaveShop = async () => {
+    setIsSavingShop(true);
+    try {
+      await onEditShop({
+        name: editName,
+        category: editCategory,
+        address: editAddress,
+        phone: editPhone,
+        zone: editZone,
+        base64Logo: editBase64Logo,
+        logo: myShop?.logo
+      });
+      setShowEditShopModal(false);
+    } finally {
+      setIsSavingShop(false);
+    }
+  };
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('Gastronomía');
@@ -233,8 +273,146 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
               📍 {myShop?.address || 'Oberá, Misiones'}
             </p>
           </div>
+          <button
+            onClick={openEditShopModal}
+            className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-bold rounded-xl backdrop-blur-xs transition-colors cursor-pointer"
+          >
+            <Pencil className="w-3.5 h-3.5" /> Editar mi negocio
+          </button>
         </div>
       </div>
+
+      {/* Modal de edición del negocio */}
+      {showEditShopModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/70 backdrop-blur-xs animate-fade-in">
+          <div className="relative w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-100 dark:border-zinc-800 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-zinc-800">
+              <h3 className="font-display font-black text-lg text-slate-900 dark:text-zinc-50">Editar mi negocio</h3>
+              <button
+                onClick={() => setShowEditShopModal(false)}
+                className="p-1.5 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {/* Logo */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 block">
+                  Logo del negocio
+                </label>
+                <div className="flex items-center gap-4">
+                  <div className="h-16 w-16 rounded-2xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center overflow-hidden shrink-0 border border-slate-200 dark:border-zinc-700">
+                    {editLogoPreview ? (
+                      <img src={editLogoPreview} alt="logo" className="w-full h-full object-cover" />
+                    ) : (
+                      <Store className="w-6 h-6 text-slate-400" />
+                    )}
+                  </div>
+                  <label className="flex-1 cursor-pointer">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = () => {
+                            const result = reader.result as string;
+                            setEditLogoPreview(result);
+                            setEditBase64Logo(result);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                    <div className="text-xs font-bold text-brand-orange dark:text-indigo-400 border border-dashed border-slate-300 dark:border-zinc-700 rounded-xl px-3 py-2.5 text-center hover:bg-slate-50 dark:hover:bg-zinc-950 transition-colors">
+                      Cambiar logo
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Nombre */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 block">Nombre del negocio</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-slate-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-brand-orange dark:focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Categoría */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 block">Categoría</label>
+                <select
+                  value={editCategory}
+                  onChange={(e) => setEditCategory(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-slate-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-brand-orange dark:focus:ring-indigo-500"
+                >
+                  <option value="Gastronomía">Gastronomía</option>
+                  <option value="Indumentaria">Indumentaria</option>
+                  <option value="Supermercados">Supermercados</option>
+                  <option value="Electro">Electro</option>
+                </select>
+              </div>
+
+              {/* Dirección */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 block">Dirección</label>
+                <input
+                  type="text"
+                  value={editAddress}
+                  onChange={(e) => setEditAddress(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-slate-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-brand-orange dark:focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Teléfono */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 block">Teléfono (WhatsApp)</label>
+                <input
+                  type="text"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="543755400000"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-slate-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-brand-orange dark:focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Zona */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-zinc-400 block">Zona</label>
+                <input
+                  type="text"
+                  value={editZone}
+                  onChange={(e) => setEditZone(e.target.value)}
+                  placeholder="Av. Sarmiento"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-sm text-slate-900 dark:text-zinc-100 focus:outline-hidden focus:ring-2 focus:ring-brand-orange dark:focus:ring-indigo-500"
+                />
+              </div>
+
+              <button
+                onClick={handleSaveShop}
+                disabled={isSavingShop || !editName}
+                className="w-full py-3 bg-brand-orange hover:bg-brand-orange/95 dark:bg-indigo-600 dark:hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-extrabold rounded-2xl flex items-center justify-center gap-2 shadow-md transition-colors text-sm cursor-pointer"
+              >
+                {isSavingShop ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Guardando...
+                  </>
+                ) : (
+                  'Guardar cambios'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column (Forms & Analytics) */}
