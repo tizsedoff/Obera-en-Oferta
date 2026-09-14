@@ -28,8 +28,22 @@ const ZONES = ['Centro', 'Av. Sarmiento', 'Av. Libertad', 'Av. Italia', 'Plaza S
 const EMOJI_PRESETS = ['🛍️', '🍔', '🍕', '👚', '🔌', '🛒', '🍦', '🧉', '💈', '💻', '🍰', '🛠️', '🚗', '📚'];
 
 export default function LoginScreen({ onLogin }: LoginScreenProps) {
-  const [activeTab, setActiveTab] = useState<'signin' | 'signup'>('signin');
-  const [role, setRole] = useState<'customer' | 'merchant'>('customer');
+  const [activeTab, setActiveTab] = useState<'signin' | 'signup'>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('accion') === 'registrarse' ? 'signup' : 'signin';
+    } catch {
+      return 'signin';
+    }
+  });
+  const [role, setRole] = useState<'customer' | 'merchant'>(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('tipo') === 'comercio' ? 'merchant' : 'customer';
+    } catch {
+      return 'customer';
+    }
+  });
   
   // Auth basic credentials
   const [name, setName] = useState(''); // Serves as owner name for merchant

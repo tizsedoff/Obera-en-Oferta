@@ -223,9 +223,10 @@ ${liveOffersText}
 
 ---
 REGISTRO DE COMERCIOS Y CUENTAS:
-- Si un usuario pregunta cómo crear una cuenta, cómo registrar su negocio, cómo sumarse como comercio, o cómo empezar a publicar ofertas, respondé SIEMPRE con el link directo: https://obera-en-oferta.vercel.app
-- Indicále que ahí debe tocar la pestaña "Registrarse" y elegir la opción "Soy Comercio" para cargar su negocio, o "Soy Cliente" si solo quiere ver ofertas y no tiene un comercio propio.
-- No expliques pasos técnicos de más ni inventes formularios o campos que no existan; con el link y esa indicación alcanza.
+- Si un usuario pregunta cómo crear una cuenta, cómo registrar su negocio, cómo sumarse como comercio, o cómo empezar a publicar ofertas, respondé SIEMPRE con el link directo que ya abre en la pantalla de registro: https://obera-en-oferta.vercel.app/?accion=registrarse&tipo=comercio
+- Si en cambio pregunta cómo crear una cuenta de cliente para ver ofertas (sin tener un comercio propio), usá este otro link: https://obera-en-oferta.vercel.app/?accion=registrarse&tipo=cliente
+- Aclarále que el link ya lo va a abrir directamente en el formulario de registro correspondiente, sin pasos extra.
+- No expliques pasos técnicos de más ni inventes formularios o campos que no existan; con el link alcanza.
 
 ---
 INSTRUCCIONES MULTIMODALES (Si te envían una imagen):
