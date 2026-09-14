@@ -10,6 +10,60 @@ interface Message {
   image?: string; // Base64 data-URL or local object URL representing the multimodal input
 }
 
+// Convierte markdown básico (**negrita** y [texto](url)) en elementos React clickeables/formateados,
+// sin usar dangerouslySetInnerHTML.
+function renderFormattedText(text: string): React.ReactNode {
+  const lines = text.split('\n');
+  const tokenRegex = /(\*\*[^*]+\*\*)|(\[[^\]]+\]\(https?:\/\/[^\s)]+\))|(https?:\/\/[^\s)]+)/g;
+
+  return lines.map((line, lineIdx) => {
+    const parts = line.split(tokenRegex).filter((part) => part !== undefined && part !== '');
+
+    const rendered = parts.map((part, i) => {
+      const boldMatch = part.match(/^\*\*([^*]+)\*\*$/);
+      if (boldMatch) {
+        return <strong key={i} className="font-bold">{boldMatch[1]}</strong>;
+      }
+      const linkMatch = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
+      if (linkMatch) {
+        return (
+          <a
+            key={i}
+            href={linkMatch[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline font-bold text-emerald-600 dark:text-indigo-400 break-all"
+          >
+            {linkMatch[1]}
+          </a>
+        );
+      }
+      const bareUrlMatch = part.match(/^https?:\/\/[^\s)]+$/);
+      if (bareUrlMatch) {
+        return (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline font-bold text-emerald-600 dark:text-indigo-400 break-all"
+          >
+            {part}
+          </a>
+        );
+      }
+      return <React.Fragment key={i}>{part}</React.Fragment>;
+    });
+
+    return (
+      <React.Fragment key={lineIdx}>
+        {rendered}
+        {lineIdx < lines.length - 1 && <br />}
+      </React.Fragment>
+    );
+  });
+}
+
 const QUICK_REPLIES = [
   { id: 'today_offers', text: '🔥 Ofertas del Día', emoji: '🔥' },
   { id: 'how_qr', text: '❓ ¿Cómo uso los QR?', emoji: '🎟️' },
@@ -318,7 +372,7 @@ export default function AiChatbot({ shops = [], offers = [] }: AiChatbotProps) {
                         <img src={msg.image} alt="Imagen del usuario" className="w-full h-full object-cover" />
                       </div>
                     )}
-                    {msg.text}
+                    {renderFormattedText(msg.text)}
                   </div>
                   <span className={`text-[9px] text-slate-400 dark:text-zinc-500 font-semibold block px-1 ${!isBot ? 'text-right' : ''}`}>
                     {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
