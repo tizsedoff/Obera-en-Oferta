@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, Edit, Trash2, KeyRound, Save, CheckCircle, AlertTriangle, Building, Tag, Compass, Sparkles, ExternalLink, MapPin, Map as MapIcon, Sliders, Settings, Check, RefreshCw, Users } from 'lucide-react';
+import { X, Plus, Edit, Trash2, KeyRound, Save, CheckCircle, AlertTriangle, Building, Tag, Compass, Sparkles, ExternalLink, MapPin, Map as MapIcon, Sliders, Settings, Check, RefreshCw, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Shop, Offer, Notification, Category, MapConfig, SiteConfig } from '../types';
 import ShopLogo from './ShopLogo';
 
@@ -58,6 +58,13 @@ export default function AdminPanel({
   const [usersError, setUsersError] = useState<string | null>(null);
   const [userFilter, setUserFilter] = useState<'all' | 'customer' | 'merchant'>('all');
   const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+  const tabScrollRef = React.useRef<HTMLDivElement>(null);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    if (tabScrollRef.current) {
+      tabScrollRef.current.scrollBy({ left: direction === 'left' ? -160 : 160, behavior: 'smooth' });
+    }
+  };
 
   const fetchUsers = async () => {
     setUsersLoading(true);
@@ -563,7 +570,15 @@ export default function AdminPanel({
         </div>
 
         {/* Tab Selection */}
-        <div className="px-6 py-2 bg-slate-50/50 dark:bg-zinc-950/50 border-b border-slate-100 dark:border-zinc-800 flex gap-2 overflow-x-auto no-scrollbar shrink-0">
+        <div className="relative flex items-center bg-slate-50/50 dark:bg-zinc-950/50 border-b border-slate-100 dark:border-zinc-800 shrink-0">
+          <button
+            onClick={() => scrollTabs('left')}
+            className="shrink-0 p-2 ml-1 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+            aria-label="Desplazar pestañas a la izquierda"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <div ref={tabScrollRef} className="px-2 py-2 flex gap-2 overflow-x-auto no-scrollbar scroll-smooth">
           <button
             onClick={() => { setActiveTab('shops'); setEditingShop(null); setIsAddingShop(false); }}
             className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 shrink-0 ${activeTab === 'shops' ? 'bg-[#2B0E67] text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
@@ -612,6 +627,14 @@ export default function AdminPanel({
           >
             <Sparkles className="w-4 h-4" />
             Personalizar Sitio
+          </button>
+          </div>
+          <button
+            onClick={() => scrollTabs('right')}
+            className="shrink-0 p-2 mr-1 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-lg transition-colors cursor-pointer"
+            aria-label="Desplazar pestañas a la derecha"
+          >
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
