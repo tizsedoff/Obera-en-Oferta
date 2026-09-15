@@ -31,6 +31,7 @@ function mapDbToShop(row: any) {
   const initial = INITIAL_SHOPS.find(s => toUUID(s.id, "shop") === row.id);
   return {
     id: row.id,
+    ownerId: row.owner_id || null,
     name: row.nombre || "Comercio",
     logo: row.logo_url || row.imagen_url || row.logo || row.imagen || initial?.logo || "🛍️",
     category: row.categoria || "Otros",
@@ -148,7 +149,7 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === "POST") {
     try {
-      const { name, logo, category, zone, address, phone, latitude, longitude, base64Logo, initialOffer } = req.body;
+      const { ownerId, name, logo, category, zone, address, phone, latitude, longitude, base64Logo, initialOffer } = req.body;
       let finalLogo = logo || "🛍️";
 
       if (base64Logo && base64Logo.startsWith("data:")) {
@@ -182,12 +183,13 @@ export default async function handler(req: any, res: any) {
           logo: finalLogo,
           zona: zone,
           latitud: latitude ? Number(latitude) : -27.4856,
-          longitud: longitude ? Number(longitude) : -55.1193
+          longitud: longitude ? Number(longitude) : -55.1193,
+          owner_id: ownerId || null
         }]);
 
         if (fullError) {
           console.warn("Retrying with minimal columns due to column mismatches:", fullError.message);
-          const { error: fallbackError } = await supabase.from("negocios").insert([dbShop]);
+          const { error: fallbackError } = await supabase.from("negocios").insert([{ ...dbShop, owner_id: ownerId || null }]);
           if (fallbackError) {
             console.error("Failed completely to insert negocio into Supabase:", fallbackError);
           }
@@ -239,12 +241,40 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // PUT: editar negocio existente
+  // PUT: editar negocio existente (solo el dueño autenticado puede hacerlo)
   if (req.method === "PUT") {
     try {
+      const authHeader = req.headers.authorization || "";
+      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+      if (!token || !supabase) {
+        return res.status(401).json({ error: "No autenticado." });
+      }
+
+      const { data: userData, error: userError } = await supabase.auth.getUser(token);
+      if (userError || !userData?.user) {
+        return res.status(401).json({ error: "Sesión inválida o expirada." });
+      }
+
       const { id, name, category, address, phone, zone, base64Logo, logo } = req.body;
       if (!id) {
         return res.status(400).json({ error: "Falta el ID del negocio a editar." });
+      }
+
+      const cleanId = toUUID(id, "shop");
+
+      // Confirmar que el negocio realmente le pertenece a este usuario
+      const { data: existingShop, error: fetchError } = await supabase
+        .from("negocios")
+        .select("owner_id")
+        .eq("id", cleanId)
+        .single();
+
+      if (fetchError || !existingShop) {
+        return res.status(404).json({ error: "Negocio no encontrado." });
+      }
+
+      if (existingShop.owner_id !== userData.user.id) {
+        return res.status(403).json({ error: "No tenés permiso para editar este negocio." });
       }
 
       let finalLogo = logo;
@@ -272,7 +302,7 @@ export default async function handler(req: any, res: any) {
         const { error } = await supabase
           .from("negocios")
           .update(updateData)
-          .eq("id", toUUID(id, "shop"));
+          .eq("id", cleanId);
         if (error) {
           console.error("Error updating negocio:", error);
           return res.status(500).json({ error: error.message });
