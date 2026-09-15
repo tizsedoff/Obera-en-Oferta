@@ -18,6 +18,7 @@ import {
   Briefcase
 } from 'lucide-react';
 import BrandLogo from './BrandLogo';
+import { supabase } from '../supabaseClient';
 
 interface LoginScreenProps {
   onLogin: (role: 'customer' | 'merchant' | 'visitor', email?: string, name?: string) => void;
@@ -69,6 +70,9 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   const [hasScrolledTerms, setHasScrolledTerms] = useState(false);
   const termsScrollRef = useRef<HTMLDivElement>(null);
 
+  // Se muestra después de registrarse, ya que Supabase exige confirmar el email
+  const [showConfirmEmailMessage, setShowConfirmEmailMessage] = useState(false);
+
   const handleTermsScroll = () => {
     const el = termsScrollRef.current;
     if (!el) return;
@@ -79,11 +83,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
   };
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const getRegisteredUsers = (): Array<{ email: string; pass: string; name: string; role: 'customer' | 'merchant' }> => {
-    const saved = localStorage.getItem('obera_ofertas_registered_users');
-    return saved ? JSON.parse(saved) : [];
-  };
 
   const handleLogoFileChange = (file: File) => {
     if (!file) return;
@@ -151,13 +150,6 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         return;
       }
 
-      const users = getRegisteredUsers();
-      if (users.some((u) => u.email === lowerEmail)) {
-        setError('Este correo electrónico ya está registrado.');
-        setLoading(false);
-        return;
-      }
-
       if (role === 'merchant') {
         if (!shopName.trim()) {
           setError('Por favor, ingresá el nombre de fantasía de tu comercio.');
@@ -183,27 +175,51 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
       return;
 
     } else {
-      // Sign In Flow
-      setTimeout(() => {
+      // Sign In Flow con Supabase Auth
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: lowerEmail,
+        password,
+      });
+
+      if (signInError) {
         setLoading(false);
-        const users = getRegisteredUsers();
-        
-        const matched = users.find(
-          (u) => u.email === lowerEmail && u.pass === password
-        );
-
-        if (!matched) {
+        if (signInError.message.toLowerCase().includes('email not confirmed')) {
+          setError('Todavía no confirmaste tu email. Revisá tu casilla de correo (y la carpeta de spam) y tocá el link de confirmación.');
+        } else if (signInError.message.toLowerCase().includes('invalid login credentials')) {
           setError('Credenciales incorrectas o usuario no registrado. Podés registrarte gratis usando la pestaña de arriba.');
-          return;
+        } else {
+          setError(signInError.message);
         }
+        return;
+      }
 
-        if (matched.role !== role) {
-          setError(`Esta cuenta está registrada como ${matched.role === 'customer' ? 'Cliente' : 'Comercio'}. Seleccioná la pestaña de rol correcta.`);
-          return;
-        }
+      if (!data.user) {
+        setLoading(false);
+        setError('No se pudo iniciar sesión. Intentá de nuevo.');
+        return;
+      }
 
-        onLogin(role, lowerEmail, matched.name);
-      }, 800);
+      // Buscamos el perfil real (rol y nombre) en la tabla profiles
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('rol, nombre')
+        .eq('id', data.user.id)
+        .single();
+
+      setLoading(false);
+
+      if (profileError || !profile) {
+        setError('No se pudo cargar tu perfil. Intentá de nuevo en unos segundos.');
+        return;
+      }
+
+      if (profile.rol !== role) {
+        setError(`Esta cuenta está registrada como ${profile.rol === 'customer' ? 'Cliente' : profile.rol === 'merchant' ? 'Comercio' : profile.rol}. Seleccioná la pestaña de rol correcta.`);
+        await supabase.auth.signOut();
+        return;
+      }
+
+      onLogin(profile.rol as 'customer' | 'merchant', lowerEmail, profile.nombre || '');
     }
   };
 
@@ -213,15 +229,40 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
     setError(null);
 
     const lowerEmail = email.trim().toLowerCase();
-    const users = getRegisteredUsers();
-    let registeredShopId: string | null = null;
 
-    if (role === 'merchant') {
+    // 1. Crear el usuario real en Supabase Auth (dispara el trigger que crea su fila en "profiles")
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: lowerEmail,
+      password,
+      options: {
+        data: {
+          nombre: name.trim(),
+          rol: role,
+        },
+        emailRedirectTo: 'https://obera-en-oferta.vercel.app/',
+      },
+    });
+
+    if (signUpError) {
+      setLoading(false);
+      if (signUpError.message.toLowerCase().includes('already registered')) {
+        setError('Este correo electrónico ya está registrado.');
+      } else {
+        setError(signUpError.message);
+      }
+      return;
+    }
+
+    const newUserId = signUpData.user?.id;
+
+    // 2. Si es comercio, lo creamos vinculado a este usuario (ownerId)
+    if (role === 'merchant' && newUserId) {
       try {
         const shopResponse = await fetch('/api/shops', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            ownerId: newUserId,
             name: shopName.trim(),
             category: shopCategory,
             zone: shopZone,
@@ -239,35 +280,49 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
           throw new Error(errData.error || 'Ocurrió un error en el servidor al registrar el comercio.');
         }
 
-        const createdShop = await shopResponse.json();
-        registeredShopId = createdShop.id;
-        if (registeredShopId) {
-          localStorage.setItem('obera_ofertas_my_shop_id', registeredShopId);
-        }
+        // Fire global refresh so components pull new shop list from API instantly
+        window.dispatchEvent(new CustomEvent('refresh-live-data'));
       } catch (err: any) {
-        setError(`Error al registrar el comercio: ${err.message}`);
+        setError(`Tu cuenta se creó, pero hubo un error al registrar el comercio: ${err.message}. Podés cargarlo más tarde desde tu panel una vez que confirmes tu email.`);
         setLoading(false);
+        setShowConfirmEmailMessage(true);
         return;
       }
     }
 
-    // Add registered credentials locally
-    users.push({
-      email: lowerEmail,
-      pass: password,
-      name: name.trim(),
-      role,
-    });
-    localStorage.setItem('obera_ofertas_registered_users', JSON.stringify(users));
-
-    // Fire global refresh so components pull new shop list from API instantly
-    window.dispatchEvent(new CustomEvent('refresh-live-data'));
-
-    setTimeout(() => {
-      setLoading(false);
-      onLogin(role, lowerEmail, name.trim());
-    }, 1000);
+    setLoading(false);
+    // Con confirmación de email activada, Supabase no entrega sesión activa todavía:
+    // mostramos el aviso de "revisá tu correo" en vez de loguear directo.
+    setShowConfirmEmailMessage(true);
   };
+
+  if (showConfirmEmailMessage) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col items-center justify-center p-6 text-center gap-5">
+        <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-950/30 rounded-full flex items-center justify-center text-4xl">
+          📩
+        </div>
+        <div className="max-w-sm space-y-2">
+          <h2 className="font-display font-black text-2xl text-slate-900 dark:text-zinc-50">
+            ¡Ya casi! Confirmá tu email
+          </h2>
+          <p className="text-sm text-slate-500 dark:text-zinc-400 leading-relaxed">
+            Te enviamos un link de confirmación a <span className="font-bold text-slate-700 dark:text-zinc-200">{email.trim()}</span>.
+            Tocalo para activar tu cuenta {role === 'merchant' ? 'de comercio' : ''} — revisá también la carpeta de spam.
+          </p>
+        </div>
+        <button
+          onClick={() => {
+            setShowConfirmEmailMessage(false);
+            setActiveTab('signin');
+          }}
+          className="mt-2 px-6 py-3 bg-brand-orange hover:bg-brand-orange/95 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white font-extrabold rounded-2xl text-sm transition-colors cursor-pointer"
+        >
+          Ya confirmé, iniciar sesión
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex flex-col justify-between p-4 relative overflow-hidden transition-colors duration-300">

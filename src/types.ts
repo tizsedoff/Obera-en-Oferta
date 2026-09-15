@@ -1,5 +1,6 @@
 export interface Shop {
   id: string;
+  ownerId?: string | null;
   name: string;
   logo: string;
   category: string;
