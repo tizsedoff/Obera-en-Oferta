@@ -21,7 +21,7 @@ import BrandLogo from './BrandLogo';
 import { supabase } from '../supabaseClient';
 
 interface LoginScreenProps {
-  onLogin: (role: 'customer' | 'merchant' | 'visitor', email?: string, name?: string) => void;
+  onLogin: (role: 'customer' | 'merchant' | 'visitor', email?: string, name?: string, userId?: string) => void;
 }
 
 const CATEGORIES = ['Gastronomía', 'Indumentaria', 'Supermercados', 'Electro', 'Otros'];
@@ -219,7 +219,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         return;
       }
 
-      onLogin(profile.rol as 'customer' | 'merchant', lowerEmail, profile.nombre || '');
+      onLogin(profile.rol as 'customer' | 'merchant', lowerEmail, profile.nombre || '', data.user.id);
     }
   };
 

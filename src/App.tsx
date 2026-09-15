@@ -4,6 +4,7 @@ import { Sparkles, QrCode, Phone, CheckCircle, Info, Bookmark, ExternalLink, Ref
 
 import { Shop, Offer, Notification, TabType, Category, MapConfig, SiteConfig } from './types';
 import { INITIAL_NOTIFICATIONS, CATEGORIES_STORY, ZONES } from './data';
+import { supabase } from './supabaseClient';
 
 import Header from './components/Header';
 import BottomNav from './components/BottomNav';
@@ -67,47 +68,99 @@ export default function App() {
     localStorage.setItem('obera_ofertas_dark_mode', String(darkMode));
   }, [darkMode]);
 
-  // User Authentication role state - se restaura desde localStorage para no perder la sesión al refrescar
-  const [userRole, setUserRole] = useState<'customer' | 'merchant' | 'visitor' | null>(() => {
+  // User Authentication role state.
+  // 'visitor' sigue usando localStorage (no tiene cuenta real).
+  // 'customer'/'merchant' se restauran desde la sesión real de Supabase (ver useEffect de abajo).
+  const [userRole, setUserRole] = useState<'customer' | 'merchant' | 'visitor' | null>(null);
+  const [userEmail, setUserEmail] = useState<string>('');
+  const [supabaseUserId, setSupabaseUserId] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Restaura la sesión al cargar la app
+  useEffect(() => {
+    let forceRegisterScreen = false;
     try {
       const params = new URLSearchParams(window.location.search);
       if (params.get('accion') === 'registrarse') {
-        // Si vienen con intención explícita de registrarse (ej: link del chatbot),
-        // forzamos la pantalla de login/registro aunque ya haya una sesión guardada.
-        return null;
+        forceRegisterScreen = true;
       }
     } catch {
       // noop
     }
-    const saved = localStorage.getItem('obera_ofertas_user_role');
-    if (saved === 'customer' || saved === 'merchant' || saved === 'visitor') {
-      return saved;
-    }
-    return null;
-  });
 
-  const [userEmail, setUserEmail] = useState<string>(() => {
-    return localStorage.getItem('obera_ofertas_user_email') || '';
-  });
+    const restoreSession = async () => {
+      if (forceRegisterScreen) {
+        setAuthChecked(true);
+        return;
+      }
 
-  const handleLogin = (role: 'customer' | 'merchant' | 'visitor', email?: string, name?: string) => {
+      // Modo invitado: sigue viviendo en localStorage
+      const savedVisitor = localStorage.getItem('obera_ofertas_user_role');
+      if (savedVisitor === 'visitor') {
+        setUserRole('visitor');
+        setUserEmail(localStorage.getItem('obera_ofertas_user_email') || '');
+        setAuthChecked(true);
+        return;
+      }
+
+      // Cuenta real: restaurar desde la sesión de Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('rol, nombre')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile && (profile.rol === 'customer' || profile.rol === 'merchant')) {
+          setUserRole(profile.rol);
+          setUserEmail(session.user.email || '');
+          setSupabaseUserId(session.user.id);
+          if (profile.nombre) {
+            localStorage.setItem('obera_ofertas_user_name', profile.nombre);
+          }
+        }
+      }
+      setAuthChecked(true);
+    };
+
+    restoreSession();
+
+    // Mantiene todo sincronizado si la sesión cambia (ej: se cierra en otra pestaña)
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        setUserRole((current) => (current === 'visitor' ? current : null));
+        setUserEmail('');
+        setSupabaseUserId(null);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const handleLogin = (role: 'customer' | 'merchant' | 'visitor', email?: string, name?: string, userId?: string) => {
     setUserRole(role);
-    localStorage.setItem('obera_ofertas_user_role', role);
-    
-    const resolvedEmail = email || '';
-    setUserEmail(resolvedEmail);
-    if (resolvedEmail) {
-      localStorage.setItem('obera_ofertas_user_email', resolvedEmail);
-    } else {
-      localStorage.removeItem('obera_ofertas_user_email');
-    }
 
-    if (name) {
-      localStorage.setItem('obera_ofertas_user_name', name);
-    } else if (role === 'visitor') {
+    if (role === 'visitor') {
+      // El invitado no tiene cuenta real: se guarda en localStorage como antes
+      localStorage.setItem('obera_ofertas_user_role', role);
+      const resolvedEmail = email || '';
+      setUserEmail(resolvedEmail);
+      if (resolvedEmail) {
+        localStorage.setItem('obera_ofertas_user_email', resolvedEmail);
+      } else {
+        localStorage.removeItem('obera_ofertas_user_email');
+      }
       localStorage.setItem('obera_ofertas_user_name', 'Invitado');
     } else {
-      localStorage.removeItem('obera_ofertas_user_name');
+      // Cuenta real de Supabase: la sesión ya la maneja supabase-js, no hace falta localStorage
+      setUserEmail(email || '');
+      setSupabaseUserId(userId || null);
+      if (name) {
+        localStorage.setItem('obera_ofertas_user_name', name);
+      }
     }
 
     if (role === 'merchant') {
@@ -117,9 +170,13 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (userRole !== 'visitor') {
+      await supabase.auth.signOut();
+    }
     setUserRole(null);
     setUserEmail('');
+    setSupabaseUserId(null);
     localStorage.removeItem('obera_ofertas_user_role');
     localStorage.removeItem('obera_ofertas_user_email');
     localStorage.removeItem('obera_ofertas_user_name');
@@ -202,11 +259,6 @@ export default function App() {
   const [claimedCouponIds, setClaimedCouponIds] = useState<string[]>(() => {
     const saved = localStorage.getItem('obera_ofertas_claimed_coupons');
     return saved ? JSON.parse(saved) : [];
-  });
-
-  // My registered shop state
-  const [myShopId, setMyShopId] = useState<string | null>(() => {
-    return localStorage.getItem('obera_ofertas_my_shop_id') || null;
   });
 
   // Redeemed deactivated coupons state
@@ -306,6 +358,7 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ownerId: supabaseUserId,
           name: shopData.name,
           category: shopData.category,
           zone: shopData.zone,
@@ -324,15 +377,19 @@ export default function App() {
       }
 
       const registeredShop = await res.json();
-      
-      setUserRole('merchant');
-      localStorage.setItem('obera_ofertas_user_role', 'merchant');
-      
-      if (registeredShop && registeredShop.id) {
-        setMyShopId(registeredShop.id);
-        localStorage.setItem('obera_ofertas_my_shop_id', registeredShop.id);
+
+      // Persistir el cambio de rol en el perfil real (Supabase), no solo en memoria/localStorage
+      if (supabaseUserId) {
+        const { error: profileUpdateError } = await supabase
+          .from('profiles')
+          .update({ rol: 'merchant' })
+          .eq('id', supabaseUserId);
+        if (profileUpdateError) {
+          console.error('Error actualizando el rol del perfil:', profileUpdateError);
+        }
       }
-      
+
+      setUserRole('merchant');
       setActiveTab('myshop');
 
       setShowToast('🚀 ¡Negocio Registrado! Bienvenidos a Oberá en Oferta.');
@@ -422,23 +479,34 @@ export default function App() {
   };
 
   const handleEditShop = async (updatedData: { name: string; category: string; address: string; phone: string; zone: string; base64Logo?: string; logo?: string }) => {
-    if (!myShopId) return;
+    if (!activeMerchantShop) return;
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setShowToast('⚠️ Tu sesión expiró, volvé a iniciar sesión.');
+        setTimeout(() => setShowToast(null), 3000);
+        return;
+      }
+
       const res = await fetch("/api/shops", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: myShopId, ...updatedData })
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ id: activeMerchantShop.id, ...updatedData })
       });
       if (res.ok) {
         setShowToast('✅ Datos del negocio actualizados.');
         setTimeout(() => setShowToast(null), 3000);
         await fetchLiveData();
       } else {
-        throw new Error("No se pudo actualizar el negocio.");
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "No se pudo actualizar el negocio.");
       }
     } catch (err: any) {
       console.error("Error editing shop:", err);
-      setShowToast('⚠️ No se pudo actualizar el negocio.');
+      setShowToast(`⚠️ ${err.message || 'No se pudo actualizar el negocio.'}`);
       setTimeout(() => setShowToast(null), 3000);
     }
   };
@@ -496,18 +564,17 @@ export default function App() {
     }
   };
 
-  // Active Merchant Shop (correctly resolves to the registered merchant's shop if set, otherwise falls back to first shop)
+  // Active Merchant Shop: resuelto por el dueño real autenticado (ownerId), no por un id guardado a mano
   const activeMerchantShop = useMemo(() => {
-    if (userRole === 'merchant' && myShopId) {
-      const found = shops.find(s => s.id === myShopId);
-      if (found) return found;
+    if (userRole === 'merchant' && supabaseUserId) {
+      return shops.find(s => s.ownerId === supabaseUserId) || null;
     }
-    return shops[0] || null;
-  }, [shops, userRole, myShopId]);
+    return null;
+  }, [shops, userRole, supabaseUserId]);
 
   const merchantOffers = activeMerchantShop ? offers.filter(o => o.shopId === activeMerchantShop.id) : [];
 
-  if (isLoadingApp) {
+  if (isLoadingApp || !authChecked) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-br from-zinc-950 via-indigo-950 to-zinc-950 text-white p-6 overflow-hidden select-none">
         {/* Animated Background Orbs */}
