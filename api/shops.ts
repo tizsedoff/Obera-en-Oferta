@@ -180,7 +180,6 @@ export default async function handler(req: any, res: any) {
           ...dbShop,
           logo_url: finalLogo,
           imagen_url: finalLogo,
-          logo: finalLogo,
           zona: zone,
           latitud: latitude ? Number(latitude) : -27.4856,
           longitud: longitude ? Number(longitude) : -55.1193,
@@ -295,7 +294,6 @@ export default async function handler(req: any, res: any) {
       if (finalLogo) {
         updateData.logo_url = finalLogo;
         updateData.imagen_url = finalLogo;
-        updateData.logo = finalLogo;
       }
 
       if (supabase) {

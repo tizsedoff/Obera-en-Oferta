@@ -305,7 +305,7 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
                 <div className="flex items-center gap-4">
                   <div className="h-16 w-16 rounded-2xl bg-slate-100 dark:bg-zinc-800 flex items-center justify-center overflow-hidden shrink-0 border border-slate-200 dark:border-zinc-700">
                     {editLogoPreview ? (
-                      <img src={editLogoPreview} alt="logo" className="w-full h-full object-cover" />
+                      <ShopLogo logo={editLogoPreview} className="text-3xl" fallbackSize="w-16 h-16" />
                     ) : (
                       <Store className="w-6 h-6 text-slate-400" />
                     )}
