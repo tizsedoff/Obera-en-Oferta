@@ -360,10 +360,23 @@ export default function AdminPanel({
     setIsAddingShop(false);
   };
 
-  const deleteShop = (shopId: string) => {
-    if (confirm('¿Seguro que querés eliminar este comercio? También se eliminarán todas sus ofertas asociadas.')) {
+  const deleteShop = async (shopId: string) => {
+    if (!confirm('¿Seguro que querés eliminar este comercio? También se eliminarán todas sus ofertas asociadas.')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/shops?id=${shopId}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-password': password }
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'No se pudo eliminar el negocio.');
+      }
       onUpdateShops(shops.filter(s => s.id !== shopId));
       onUpdateOffers(offers.filter(o => o.shopId !== shopId));
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
     }
   };
 
@@ -455,9 +468,19 @@ export default function AdminPanel({
     setIsAddingOffer(false);
   };
 
-  const deleteOffer = (offerId: string) => {
-    if (confirm('¿Seguro que querés eliminar esta oferta?')) {
+  const deleteOffer = async (offerId: string) => {
+    if (!confirm('¿Seguro que querés eliminar esta oferta?')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/offers?id=${offerId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || 'No se pudo eliminar la oferta.');
+      }
       onUpdateOffers(offers.filter(o => o.id !== offerId));
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
     }
   };
 

@@ -461,7 +461,7 @@ export default function App() {
   // Delete offer from database and memory
   const handleDeleteOffer = async (id: string) => {
     try {
-      const res = await fetch(`/api/offers/${id}`, {
+      const res = await fetch(`/api/offers?id=${id}`, {
         method: "DELETE"
       });
       if (res.ok) {
@@ -473,8 +473,8 @@ export default function App() {
       }
     } catch (err: any) {
       console.error("Error deleting offer:", err);
-      // Fallback local delete for safety
-      setOffers(prev => prev.filter(o => o.id !== id));
+      setShowToast('⚠️ No se pudo eliminar la oferta. Probá de nuevo.');
+      setTimeout(() => setShowToast(null), 3000);
     }
   };
 
