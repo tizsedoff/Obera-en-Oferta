@@ -82,30 +82,7 @@ export default function CategoriesTab({
       // Create seed values for likes based on view count
       initialLikes[o.id] = Math.floor(o.views * 1.8) + 42;
 
-      // Realistic localized community comments
-      const seedComments: Comment[] = [];
-      if (o.category === 'Gastronomía') {
-        seedComments.push(
-          { id: `c-1-${o.id}`, user: 'mate_obereno', text: '¡La chipa de este local es una locura, calentita y con mucho queso! 🧉🧀', time: 'hace 2h', avatar: '🧉' },
-          { id: `c-2-${o.id}`, user: 'camila.misiones', text: 'Excelente precio. Fuimos ayer con el QR y nos atendieron súper rápido.', time: 'hace 5h', avatar: '🌸' }
-        );
-      } else if (o.category === 'Indumentaria') {
-        seedComments.push(
-          { id: `c-1-${o.id}`, user: 'facu_silva', text: '¡Las zapas están regaladas! En Posadas salen el doble.', time: 'hace 1h', avatar: '👟' },
-          { id: `c-2-${o.id}`, user: 'sofi_ob', text: 'Muy buena calidad la campera y tienen variedad de talles.', time: 'hace 4h', avatar: '✨' }
-        );
-      } else if (o.category === 'Supermercados') {
-        seedComments.push(
-          { id: `c-1-${o.id}`, user: 'ahorro_misionero', text: 'Me re sirvió para la yerba orgánica de la cooperativa. Stockeado total!', time: 'hace 3h', avatar: '🛒' },
-          { id: `c-2-${o.id}`, user: 'gaby_l', text: 'Escanean el QR en caja de una. Re cómodo.', time: 'hace 6h', avatar: '👩‍🍳' }
-        );
-      } else {
-        seedComments.push(
-          { id: `c-1-${o.id}`, user: 'juan_tecnologia', text: '¡Tremendo descuento! Ya saqué mi cupón QR antes de que se agote.', time: 'hace 3h', avatar: '⚡' },
-          { id: `c-2-${o.id}`, user: 'aps_fan', text: 'Aporte genial de APS DEVELOPER para el ahorro local.', time: 'hace 8h', avatar: '🚀' }
-        );
-      }
-      initialComments[o.id] = seedComments;
+      initialComments[o.id] = [];
     });
 
     setCustomLikesCount(initialLikes);
