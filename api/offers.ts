@@ -69,7 +69,7 @@ function mapDbToOffer(row: any, allShops: any[]) {
     expiryDate: row.fecha_fin || "",
     hasQrCoupon: initial?.hasQrCoupon !== undefined ? initial.hasQrCoupon : true,
     qrCodeValue: initial?.qrCodeValue || `OBERACLUB-${row.id.slice(0, 4).toUpperCase()}`,
-    views: initial?.views || Math.floor(Math.random() * 25) + 5,
+    views: 0,
     couponsClaimed: initial?.couponsClaimed || 0,
     isFlashSale: initial?.isFlashSale !== undefined ? initial.isFlashSale : false,
     usado: initial?.usado !== undefined ? initial.usado : false
@@ -207,7 +207,7 @@ export default async function handler(req: any, res: any) {
         expiryDate,
         hasQrCoupon: hasQrCoupon !== undefined ? hasQrCoupon : true,
         qrCodeValue: hasQrCoupon ? `OBERACLUB-${Math.floor(1000 + Math.random() * 9000)}` : undefined,
-        views: Math.floor(Math.random() * 15) + 3,
+        views: 0,
         couponsClaimed: 0,
         isFlashSale: isFlashSale !== undefined ? isFlashSale : false,
         usado: false,

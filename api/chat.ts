@@ -64,75 +64,7 @@ function mapDbToOffer(row: any, allShops: any[]) {
 }
 
 function getLocalFallbackResponse(message: string): string {
-  const msg = (message || "").toLowerCase();
-  
-  if (msg.includes("mate") || msg.includes("yerba") || msg.includes("chipa") || msg.includes("delicias")) {
-    return `Te cuento sobre **Yerba Mate & Delicias Misioneras** (Av. Sarmiento 450). 
-Tienen un ofertón espectacular: **30% de Descuento en Combo Mate + Termo de Acero** (Termo inox 1L + Yerba Mate de 500g).
-*   **Precio Oferta:** $31.500 (Precio normal: $45.000)
-*   **Código de Cupón QR:** \`OBERAMATE-30-OFF-X921\`
-*   **Vence:** 10 de julio de 2026.
-¡Ideal para arrancar el día bien misionero, chamigo!`;
-  }
-  
-  if (msg.includes("helado") || msg.includes("polar") || msg.includes("crema") || msg.includes("frío") || msg.includes("frio")) {
-    return `Si querés refrescarte, en **Heladería Polar** (Av. Sarmiento 210) tienen una promo imperdible:
-**2x1 en Kilo de Helado Artesanal** (¡tenés que probar el sabor único de Crema de Mate Cocido!).
-*   **Precio Oferta:** $6.000 (Precio normal: $12.000)
-*   **Código de Cupón QR:** \`POLAR-2X1-KILO-Y712\`
-*   **Vence:** 6 de julio de 2026.
-¡Para disfrutar con amigos o la familia!`;
-  }
-  
-  if (msg.includes("zapatilla") || msg.includes("zapato") || msg.includes("calzado") || msg.includes("carhue") || msg.includes("pie")) {
-    return `En **Calzados Carhué** (Av. Libertad 340) tienen calzado de primera calidad:
-**15% de Descuento en Zapatillas Deportivas** de primeras marcas.
-*   **Precio Oferta:** $46.750 (Precio normal: $55.000)
-*   **Código de Cupón QR:** \`CARHUE-DEPOR-15-Z882\`
-*   **Vence:** 15 de julio de 2026.
-¡Para andar cómodo por toda la Tierra Colorada!`;
-  }
-  
-  if (msg.includes("tv") || msg.includes("smart") || msg.includes("tele") || msg.includes("electro") || msg.includes("televisor")) {
-    return `Te paso el dato de **Electro Oberá** (Sgto. Cabral 15, frente a Plaza San Martín):
-Tienen una Oferta Flash sin cupón QR para un **Smart TV 43" Full HD Smart Tech**.
-*   **Precio Oferta:** $299.990 (Precio normal: $380.000)
-*   **Vence:** 5 de julio de 2026.
-*   *Nota:* Actualmente el local físico está cerrado, ¡pero podés aprovechar la oferta online de la plataforma!`;
-  }
-  
-  if (msg.includes("harina") || msg.includes("favorita") || msg.includes("condor") || msg.includes("cóndor") || msg.includes("super")) {
-    return `En el **Supermercado El Cóndor** (Av. Italia 890) podés encontrar:
-**Pack x3 Harina Favorita** en Oferta Flash (sin cupón QR), ideal para unas buenas tortas fritas misioneras en días lluviosos.
-*   **Precio Oferta:** $2.900 (Precio normal: $4.200)
-*   **Vence:** 8 de julio de 2026.
-¡Para que no falte nada en la mesa, chamigo!`;
-  }
-  
-  if (msg.includes("campera") || msg.includes("abrigo") || msg.includes("ropa") || msg.includes("indumentaria") || msg.includes("style")) {
-    return `En **Misiones Style Indumentaria** (Av. Libertad 120) tienen una promo para el frío:
-**Campera de Abrigo de Gabardina con Corderito** (Oferta Flash sin cupón, talles S al XXL).
-*   **Precio Oferta:** $59.500 (Precio normal: $85.000)
-*   **Vence:** 7 de julio de 2026.
-¡Especial para abrigarse con estilo!`;
-  }
-  
-  if (msg.includes("cupón") || msg.includes("cupon") || msg.includes("descuento") || msg.includes("secreto") || msg.includes("promoción") || msg.includes("codigo") || msg.includes("código")) {
-    return `¡Te tiro un secreto de Oberá en Oferta! 
-Utilizá el código secreto **\`OBERABOT20\`** para recibir un **15% de descuento adicional** en tus compras presenciales en tiendas de la zona centro adheridas.
-Además, si realizás una compra y subís una foto de tu ticket/recibo acá en el chat, te sumamos **100 puntos de fidelidad** para canjear en la Fiesta Nacional del Inmigrante. ¡Una locura!`;
-  }
-
-  return `¡Hola, che! ¿Cómo andás? Como tu Asistente local de la Tierra Colorada, tengo todos los comercios y ofertas de Oberá memorizados en mi chip local:
-
-1.  **Yerba Mate & Delicias Misioneras** 🧉: 30% de descuento en Combo Mate + Termo ($31.500).
-2.  **Heladería Polar** 🍦: 2x1 en Kilo de Helado Artesanal (¡con sabor de Crema de Mate Cocido!).
-3.  **Calzados Carhué** 👟: 15% de descuento en zapatillas deportivas ($46.750).
-4.  **Electro Oberá** ⚡: Smart TV 43" ($299.990).
-5.  **Supermercado El Cóndor** 🛒: Harina pack x3 ($2.900).
-6.  **Misiones Style Indumentaria** 👕: Campera con corderito ($59.500).
-
-Decime de qué tenés ganas de hablar o si querés saber más detalles sobre alguna promoción o comercio de nuestra hermosa ciudad, ¡chamigo!`;
+  return "¡Hola! En este momento no hay conexión con el asistente inteligente, pero puedes consultar las ofertas y comercios directamente en la plataforma.";
 }
 
 export default async function handler(req: any, res: any) {

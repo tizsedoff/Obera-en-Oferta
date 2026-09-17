@@ -4,29 +4,7 @@ export const INITIAL_SHOPS: Shop[] = [];
 
 export const INITIAL_OFFERS: Offer[] = [];
 
-export const INITIAL_NOTIFICATIONS: Notification[] = [
-  {
-    id: 'notif-1',
-    text: '🔥 ¡Últimas 2 horas! 2x1 en Kilo de Helado Artesanal en Heladería Polar',
-    time: 'Hace 10 min',
-    isRead: false,
-    type: 'flash'
-  },
-  {
-    id: 'notif-2',
-    text: '🧉 Yerba Mate & Delicias Misioneras publicó un nuevo cupón QR de 30% Off',
-    time: 'Hace 1 hora',
-    isRead: false,
-    type: 'coupon'
-  },
-  {
-    id: 'notif-3',
-    text: '👟 Calzados Carhué se unió a la plataforma ¡Mirá sus ofertas exclusivas!',
-    time: 'Ayer',
-    isRead: true,
-    type: 'new_shop'
-  }
-];
+export const INITIAL_NOTIFICATIONS: Notification[] = [];
 
 export const CATEGORIES_STORY = [
   { id: 'all', name: 'Todos', emoji: '🌟', color: 'bg-amber-100 text-amber-800 border-amber-200' },
