@@ -114,10 +114,13 @@ export default function CategoriesTab({
     const text = newCommentText[offerId]?.trim();
     if (!text) return;
 
+    const currentUserName = localStorage.getItem('obera_ofertas_user_name') || localStorage.getItem('obera_ofertas_user_email')?.split('@')[0] || 'Vecino de Oberá';
+    const currentUserAvatar = localStorage.getItem('obera_ofertas_user_avatar') || '👤';
+
     const newComment = {
       oferta_id: offerId,
-      usuario: 'Vecino de Oberá',
-      avatar: '🧉',
+      usuario: currentUserName,
+      avatar: currentUserAvatar,
       texto: text
     };
 
