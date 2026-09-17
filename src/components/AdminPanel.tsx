@@ -265,8 +265,10 @@ export default function AdminPanel({
   };
 
   // --- SHOP ACTIONS ---
-  const saveShop = (e: React.FormEvent) => {
+  const [savingShop, setSavingShop] = useState(false);
+  const saveShop = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSavingShop(true);
 
     // Safely parse latitude and longitude, supporting both dot and comma as decimal separator
     const cleanLatStr = String(shopForm.latitude).trim().replace(',', '.');
@@ -278,43 +280,77 @@ export default function AdminPanel({
     if (isNaN(parsedLat)) parsedLat = -27.4856;
     if (isNaN(parsedLng)) parsedLng = -55.1193;
 
+    // Si el logo es un archivo recién cargado (data URL), va como base64Logo para que
+    // el backend lo suba de verdad al bucket de Storage. Si es un emoji o una URL externa, va tal cual.
+    const isUploadedFile = shopForm.logo && shopForm.logo.startsWith('data:');
+    const logoPayload = isUploadedFile
+      ? { base64Logo: shopForm.logo }
+      : { logo: shopForm.logo };
+
     const finalShopForm = {
-      ...shopForm,
+      name: shopForm.name,
+      category: shopForm.category,
+      zone: shopForm.zone,
+      address: shopForm.address,
+      phone: shopForm.phone,
       latitude: parsedLat,
-      longitude: parsedLng
+      longitude: parsedLng,
+      ...logoPayload
     };
 
-    if (editingShop) {
-      // Edit existing shop
-      const updated = shops.map(s => s.id === editingShop.id ? { ...s, ...finalShopForm } : s);
-      onUpdateShops(updated);
-      
-      // Update shopName in existing offers
-      const updatedOffers = offers.map(o => o.shopId === editingShop.id ? { ...o, shopName: finalShopForm.name, category: finalShopForm.category } : o);
-      onUpdateOffers(updatedOffers);
+    try {
+      if (editingShop) {
+        // Edit existing shop
+        const res = await fetch('/api/shops', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
+          body: JSON.stringify({ id: editingShop.id, ...finalShopForm })
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'No se pudo actualizar el negocio.');
+        }
 
-      setEditingShop(null);
-    } else {
-      // Add new shop
-      const newShop: Shop = {
-        id: `shop-${Date.now()}`,
-        ...finalShopForm
-      };
-      onUpdateShops([...shops, newShop]);
-      setIsAddingShop(false);
+        const updated = shops.map(s => s.id === editingShop.id
+          ? { ...s, ...finalShopForm, logo: isUploadedFile ? s.logo : shopForm.logo }
+          : s);
+        onUpdateShops(updated);
 
-      // Trigger notification
-      const newNotif: Notification = {
-        id: `notif-${Date.now()}`,
-        text: `🆕 ¡Nuevo comercio adherido! Se sumó "${newShop.name}" en la zona de ${newShop.zone}.`,
-        time: 'Hace 1 min',
-        isRead: false,
-        type: 'new_shop'
-      };
-      onUpdateNotifications([newNotif, ...notifications]);
+        const updatedOffers = offers.map(o => o.shopId === editingShop.id ? { ...o, shopName: finalShopForm.name, category: finalShopForm.category } : o);
+        onUpdateOffers(updatedOffers);
+
+        setEditingShop(null);
+      } else {
+        // Add new shop
+        const res = await fetch('/api/shops', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(finalShopForm)
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || 'No se pudo registrar el negocio.');
+        }
+        const newShop: Shop = await res.json();
+        onUpdateShops([...shops, newShop]);
+        setIsAddingShop(false);
+
+        // Trigger notification
+        const newNotif: Notification = {
+          id: `notif-${Date.now()}`,
+          text: `🆕 ¡Nuevo comercio adherido! Se sumó "${newShop.name}" en la zona de ${newShop.zone}.`,
+          time: 'Hace 1 min',
+          isRead: false,
+          type: 'new_shop'
+        };
+        onUpdateNotifications([newNotif, ...notifications]);
+      }
+      resetShopForm();
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setSavingShop(false);
     }
-    // Reset shop form
-    resetShopForm();
   };
 
   const startEditShop = (shop: Shop) => {

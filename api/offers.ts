@@ -76,7 +76,7 @@ function mapDbToOffer(row: any, allShops: any[]) {
   };
 }
 
-const IMAGES_BUCKET = "obera en oferta fotos";
+const IMAGES_BUCKET = "obera-en-oferta-fotos";
 
 export default async function handler(req: any, res: any) {
   const supabaseUrl = process.env.SUPABASE_URL || "";

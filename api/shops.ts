@@ -61,8 +61,8 @@ function mapOfferToDb(offer: any) {
 }
 
 // NOTA: nombres de bucket ajustados a los reales creados en Supabase
-const LOGOS_BUCKET = "obera en oferta logos";
-const IMAGES_BUCKET = "obera en oferta fotos";
+const LOGOS_BUCKET = "obera-en-oferta-logos";
+const IMAGES_BUCKET = "obera-en-oferta-fotos";
 
 export default async function handler(req: any, res: any) {
   const supabaseUrl = process.env.SUPABASE_URL || "";
@@ -240,18 +240,27 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // PUT: editar negocio existente (solo el dueño autenticado puede hacerlo)
+  // PUT: editar negocio existente (el dueño autenticado, o el admin con su contraseña)
   if (req.method === "PUT") {
     try {
-      const authHeader = req.headers.authorization || "";
-      const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-      if (!token || !supabase) {
-        return res.status(401).json({ error: "No autenticado." });
-      }
+      const ADMIN_PASSWORD = process.env.ADMIN_PANEL_PASSWORD || "apsdev";
+      const providedAdminPassword = req.headers["x-admin-password"] || "";
+      const isAdmin = providedAdminPassword === ADMIN_PASSWORD;
 
-      const { data: userData, error: userError } = await supabase.auth.getUser(token);
-      if (userError || !userData?.user) {
-        return res.status(401).json({ error: "Sesión inválida o expirada." });
+      let verifiedUserId: string | null = null;
+
+      if (!isAdmin) {
+        const authHeader = req.headers.authorization || "";
+        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        if (!token || !supabase) {
+          return res.status(401).json({ error: "No autenticado." });
+        }
+
+        const { data: userData, error: userError } = await supabase.auth.getUser(token);
+        if (userError || !userData?.user) {
+          return res.status(401).json({ error: "Sesión inválida o expirada." });
+        }
+        verifiedUserId = userData.user.id;
       }
 
       const { id, name, category, address, phone, zone, base64Logo, logo } = req.body;
@@ -261,19 +270,21 @@ export default async function handler(req: any, res: any) {
 
       const cleanId = toUUID(id, "shop");
 
-      // Confirmar que el negocio realmente le pertenece a este usuario
-      const { data: existingShop, error: fetchError } = await supabase
-        .from("negocios")
-        .select("owner_id")
-        .eq("id", cleanId)
-        .single();
+      if (!isAdmin) {
+        // Confirmar que el negocio realmente le pertenece a este usuario
+        const { data: existingShop, error: fetchError } = await supabase
+          .from("negocios")
+          .select("owner_id")
+          .eq("id", cleanId)
+          .single();
 
-      if (fetchError || !existingShop) {
-        return res.status(404).json({ error: "Negocio no encontrado." });
-      }
+        if (fetchError || !existingShop) {
+          return res.status(404).json({ error: "Negocio no encontrado." });
+        }
 
-      if (existingShop.owner_id !== userData.user.id) {
-        return res.status(403).json({ error: "No tenés permiso para editar este negocio." });
+        if (existingShop.owner_id !== verifiedUserId) {
+          return res.status(403).json({ error: "No tenés permiso para editar este negocio." });
+        }
       }
 
       let finalLogo = logo;
