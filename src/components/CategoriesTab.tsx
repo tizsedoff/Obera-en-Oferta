@@ -22,6 +22,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Offer, Shop, Category } from '../types';
 import ShopLogo from './ShopLogo';
+import { supabase } from '../supabaseClient';
 
 interface CategoriesTabProps {
   offers: Offer[];
@@ -82,12 +83,63 @@ export default function CategoriesTab({
       // Create seed values for likes based on view count
       initialLikes[o.id] = Math.floor(o.views * 1.8) + 42;
 
-      initialComments[o.id] = [];
     });
 
     setCustomLikesCount(initialLikes);
-    setComments(initialComments);
   }, [offers]);
+
+  useEffect(() => {
+    async function fetchComments() {
+      if (!supabase) return;
+      const { data, error } = await supabase.from('comentarios').select('*');
+      if (!error && data) {
+        const mapped: { [key: string]: Comment[] } = {};
+        data.forEach((c: any) => {
+          if (!mapped[c.oferta_id]) mapped[c.oferta_id] = [];
+          mapped[c.oferta_id].push({
+            id: c.id,
+            user: c.usuario,
+            text: c.texto,
+            time: new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            avatar: c.avatar || '💬'
+          });
+        });
+        setComments(mapped);
+      }
+    }
+    fetchComments();
+  }, [offers]);
+
+  const handleAddComment = async (offerId: string) => {
+    const text = newCommentText[offerId]?.trim();
+    if (!text) return;
+
+    const newComment = {
+      oferta_id: offerId,
+      usuario: 'Vecino de Oberá',
+      avatar: '🧉',
+      texto: text
+    };
+
+    if (supabase) {
+      const { data, error } = await supabase.from('comentarios').insert([newComment]).select().single();
+      if (!error && data) {
+        const formattedComment: Comment = {
+          id: data.id,
+          user: data.usuario,
+          text: data.texto,
+          time: 'Reciente',
+          avatar: data.avatar
+        };
+        setComments(prev => ({
+          ...prev,
+          [offerId]: [...(prev[offerId] || []), formattedComment]
+        }));
+      }
+    }
+
+    setNewCommentText(prev => ({ ...prev, [offerId]: '' }));
+  };
 
   // Handle price bounds dynamically
   const maxOfferPrice = useMemo(() => {
