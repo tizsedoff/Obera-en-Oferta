@@ -220,27 +220,7 @@ export default function CategoriesTab({
     }
   };
 
-  // Comment submitter
-  const handleAddComment = (offerId: string) => {
-    const text = newCommentText[offerId]?.trim();
-    if (!text) return;
 
-    const newComment: Comment = {
-      id: `c-user-${Date.now()}`,
-      user: 'tu_usuario_local',
-      text: text,
-      time: 'ahora',
-      avatar: '🧉'
-    };
-
-    setComments(prev => ({
-      ...prev,
-      [offerId]: [newComment, ...(prev[offerId] || [])]
-    }));
-
-    setNewCommentText(prev => ({ ...prev, [offerId]: '' }));
-    setExpandedComments(prev => ({ ...prev, [offerId]: true }));
-  };
 
   // Share action
   const triggerToast = (msg: string) => {
