@@ -7,19 +7,14 @@ interface CountdownTimerProps {
 }
 
 export default function CountdownTimer({ expiryDate, size = 'sm' }: CountdownTimerProps) {
-  const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0, isUrgent: false });
+  const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0, isUrgent: false, expired: false });
 
   useEffect(() => {
     const calculateTimeLeft = () => {
-      // Parse or default to current day midnight if expired
-      const targetStr = expiryDate.includes('T') ? expiryDate : `${expiryDate}T23:59:59`;
-      let difference = +new Date(targetStr) - +new Date();
-      
-      if (isNaN(difference) || difference <= 0) {
-        // Fallback: If date is in the past, simulate hours left of today to maintain high-excitement visual urgency
-        const now = new Date();
-        const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-        difference = +midnight - +now;
+      const parsed = new Date(expiryDate);
+      const difference = parsed.getTime() - Date.now();
+      if (!expiryDate || Number.isNaN(parsed.getTime()) || difference <= 0) {
+        return { hours: 0, minutes: 0, seconds: 0, isUrgent: false, expired: true };
       }
 
       const totalHours = Math.floor(difference / (1000 * 60 * 60));
@@ -30,7 +25,8 @@ export default function CountdownTimer({ expiryDate, size = 'sm' }: CountdownTim
         hours: totalHours,
         minutes,
         seconds,
-        isUrgent: totalHours < 6 // red glow if less than 6 hours
+        isUrgent: totalHours < 6,
+        expired: false
       };
     };
 
@@ -38,13 +34,19 @@ export default function CountdownTimer({ expiryDate, size = 'sm' }: CountdownTim
     setTimeLeft(calculateTimeLeft());
 
     const timer = setInterval(() => {
-      setTimeLeft(calculateTimeLeft());
+      const next = calculateTimeLeft();
+      setTimeLeft(next);
+      if (next.expired) clearInterval(timer);
     }, 1000);
 
     return () => clearInterval(timer);
   }, [expiryDate]);
 
   const pad = (n: number) => String(n).padStart(2, '0');
+
+  if (timeLeft.expired) {
+    return <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-black border bg-slate-100 text-slate-500 border-slate-200">Oferta vencida</div>;
+  }
 
   if (size === 'md') {
     return (

@@ -13,6 +13,14 @@ export interface Shop {
   longitude?: number;
 }
 
+export interface Coupon {
+  id: string;
+  offerId: string;
+  token: string;
+  expiresAt: string;
+  redeemedAt?: string | null;
+}
+
 export interface Offer {
   id: string;
   shopId: string;
@@ -26,6 +34,7 @@ export interface Offer {
   expiryDate: string;
   hasQrCoupon: boolean;
   qrCodeValue?: string;
+  expiresAt?: string;
   views: number;
   couponsClaimed: number;
   isFlashSale: boolean;

@@ -25,7 +25,7 @@ function mapDbToShop(row: any) {
     id: row.id,
     name: row.nombre || "Comercio",
     logo: row.logo_url || row.imagen_url || row.logo || row.imagen || initial?.logo || "🛍️",
-    category: row.categoria || "Otros",
+    category: row.categoria || "",
     zone: initial?.zone || row.zona || "Centro",
     isOpen: initial?.isOpen !== undefined ? initial.isOpen : true,
     address: row.direccion || "Oberá, Misiones",
@@ -47,6 +47,7 @@ function mapOfferToDb(offer: any) {
     imagen_url: offer.image || "",
     precio_oferta: Math.round(Number(offer.discountPrice || 0)),
     fecha_fin: offer.expiryDate || "",
+    expires_at: offer.expiryDate || null,
     activo: true
   };
 }
@@ -65,8 +66,8 @@ function mapDbToOffer(row: any, allShops: any[]) {
     originalPrice: Number(row.precio_original || 0),
     discountPrice: Number(row.precio_oferta || 0),
     image: row.imagen_url || initial?.image || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80",
-    category: row.categoria || "Otros",
-    expiryDate: row.fecha_fin || "",
+    category: row.categoria || "",
+    expiryDate: row.expires_at || row.fecha_fin || "",
     hasQrCoupon: initial?.hasQrCoupon !== undefined ? initial.hasQrCoupon : true,
     qrCodeValue: initial?.qrCodeValue || `OBERACLUB-${row.id.slice(0, 4).toUpperCase()}`,
     views: 0,
@@ -137,7 +138,7 @@ export default async function handler(req: any, res: any) {
       }
 
       try {
-        const { data, error } = await supabase.from("ofertas").select("*");
+        const { data, error } = await supabase.from("ofertas").select("*").gt("expires_at", new Date().toISOString());
         if (error) throw error;
 
         if (data && data.length > 0) {

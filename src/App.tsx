@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, QrCode, Phone, CheckCircle, Info, Bookmark, ExternalLink, RefreshCw, Smartphone, Star } from 'lucide-react';
 
-import { Shop, Offer, Notification, TabType, Category, MapConfig, SiteConfig } from './types';
-import { INITIAL_NOTIFICATIONS, CATEGORIES_STORY, ZONES } from './data';
+import { Shop, Offer, Notification, TabType, Category, MapConfig, SiteConfig, Coupon } from './types';
+import { INITIAL_NOTIFICATIONS, CATEGORIES_STORY, ZONES, normalizeCategoryId } from './data';
 import { supabase } from './supabaseClient';
 
 import Header from './components/Header';
@@ -191,11 +191,11 @@ export default function App() {
       ]);
       if (shopsRes.ok) {
         const shopsData = await shopsRes.json();
-        setShops(shopsData);
+        setShops(shopsData.map((shop: Shop) => ({ ...shop, category: normalizeCategoryId(shop.category) })));
       }
       if (offersRes.ok) {
         const offersData = await offersRes.json();
-        setOffers(offersData);
+        setOffers(offersData.map((offer: Offer) => ({ ...offer, category: normalizeCategoryId(offer.category) })));
       }
     } catch (err) {
       console.error("Error loading live database data from API:", err);
@@ -256,10 +256,12 @@ export default function App() {
   const [showToast, setShowToast] = useState<string | null>(null);
 
   // Claimed coupons state
-  const [claimedCouponIds, setClaimedCouponIds] = useState<string[]>(() => {
+  const [claimedCoupons, setClaimedCoupons] = useState<Coupon[]>(() => {
     const saved = localStorage.getItem('obera_ofertas_claimed_coupons');
     return saved ? JSON.parse(saved) : [];
   });
+
+  const claimedCouponIds = claimedCoupons.map(coupon => coupon.offerId);
 
   // Redeemed deactivated coupons state
   const [redeemedCouponIds, setRedeemedCouponIds] = useState<string[]>(() => {
@@ -286,8 +288,8 @@ export default function App() {
   }, [notifications]);
 
   useEffect(() => {
-    localStorage.setItem('obera_ofertas_claimed_coupons', JSON.stringify(claimedCouponIds));
-  }, [claimedCouponIds]);
+    localStorage.setItem('obera_ofertas_claimed_coupons', JSON.stringify(claimedCoupons));
+  }, [claimedCoupons]);
 
   useEffect(() => {
     localStorage.setItem('obera_ofertas_redeemed_coupons', JSON.stringify(redeemedCouponIds));
@@ -321,21 +323,26 @@ export default function App() {
   }, []);
 
   // Handle claims - updates both coupon counts and merchant analytics dynamically
-  const handleClaimCoupon = (offerId: string) => {
-    setOffers(prev => prev.map(o => {
-      if (o.id === offerId) {
-        return { ...o, couponsClaimed: o.couponsClaimed + 1 };
-      }
-      return o;
-    }));
+  const handleClaimCoupon = async (offerId: string): Promise<Coupon | null> => {
+    const response = await fetch('/api/coupons/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ offerId })
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'No se pudo activar el cupón.');
 
-    if (!claimedCouponIds.includes(offerId)) {
-      setClaimedCouponIds(prev => [...prev, offerId]);
-    }
-
-    // Trigger toast
+    const coupon: Coupon = {
+      id: payload.id,
+      offerId,
+      token: payload.token || payload.codigoUnico,
+      expiresAt: payload.expiresAt || offers.find(offer => offer.id === offerId)?.expiryDate || ''
+    };
+    setClaimedCoupons(previous => previous.some(item => item.id === coupon.id) ? previous : [...previous, coupon]);
+    setOffers(previous => previous.map(offer => offer.id === offerId ? { ...offer, couponsClaimed: offer.couponsClaimed + 1 } : offer));
     setShowToast('🎟️ ¡Cupón guardado con éxito! Se añadió a tu billetera.');
     setTimeout(() => setShowToast(null), 3500);
+    return coupon;
   };
 
   // Upgrade customer to merchant role & create real shop in Supabase

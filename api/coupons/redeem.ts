@@ -1,61 +1,43 @@
 import { createClient } from "@supabase/supabase-js";
 
-export default async function handler(req: any, res: any) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ success: false, error: "Method not allowed. Use POST." });
+function extractToken(value: string): string {
+  const trimmed = value.trim();
+  try {
+    const url = new URL(trimmed);
+    return url.searchParams.get("token") || url.searchParams.get("codigo") || trimmed;
+  } catch {
+    return trimmed;
   }
+}
+
+export default async function handler(req: any, res: any) {
+  if (req.method !== "POST") return res.status(405).json({ success: false, error: "Method not allowed. Use POST." });
 
   try {
-    const { scannedCode } = req.body;
-    if (!scannedCode) {
-      return res.status(400).json({ success: false, error: "No se proporcionó ningún código QR" });
-    }
+    const scannedCode = extractToken(String(req.body?.scannedCode || ""));
+    if (!scannedCode) return res.status(400).json({ success: false, error: "No se proporcionó ningún código QR" });
 
-    const supabaseUrl = process.env.SUPABASE_URL || "";
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || "";
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Buscar el cupón individual por su código único
-    const { data: cupon, error: cuponError } = await supabase
+    const supabase = createClient(process.env.SUPABASE_URL || "", process.env.SUPABASE_SERVICE_KEY || "");
+    const now = new Date().toISOString();
+    const { data: redeemed, error } = await supabase
       .from("cupones_canjeados")
-      .select("*, ofertas(titulo, precio_original, precio_oferta)")
-      .eq("codigo_unico", scannedCode.trim())
-      .single();
+      .update({ usado: true, fecha_canje: now, redeemed_at: now })
+      .eq("codigo_unico", scannedCode)
+      .eq("usado", false)
+      .gt("expires_at", now)
+      .select("id, oferta_id, ofertas(titulo, precio_original, precio_oferta)")
+      .maybeSingle();
 
-    if (cuponError || !cupon) {
-      return res.status(404).json({ success: false, error: "Código de cupón inválido o no encontrado." });
-    }
-
-    if (cupon.usado) {
-      return res.status(200).json({
-        success: false,
-        error: "⚠️ ¡Este cupón ya fue canjeado previamente! No es válido para una segunda compra.",
-        offerTitle: cupon.ofertas?.titulo
-      });
-    }
-
-    // Marcar SOLO este cupón como usado — la oferta sigue activa para el resto
-    const { error: updateError } = await supabase
-      .from("cupones_canjeados")
-      .update({ usado: true, fecha_canje: new Date().toISOString() })
-      .eq("id", cupon.id);
-
-    if (updateError) {
-      console.error("Error marcando cupón como usado:", updateError);
+    if (error) {
+      console.error("Error marcando cupón como usado:", error);
       return res.status(500).json({ success: false, error: "No se pudo procesar el canje." });
     }
+    if (!redeemed) return res.status(409).json({ success: false, error: "Cupón inválido, vencido o ya utilizado." });
 
-    const originalPrice = Number(cupon.ofertas?.precio_original || 0);
-    const discountPrice = Number(cupon.ofertas?.precio_oferta || 0);
-
-    return res.status(200).json({
-      success: true,
-      message: "¡Enhorabuena! El cupón ha sido validado e ingresado correctamente.",
-      offerTitle: cupon.ofertas?.titulo,
-      discountPrice,
-      originalPrice,
-      savings: originalPrice - discountPrice
-    });
+    const offer = Array.isArray(redeemed.ofertas) ? redeemed.ofertas[0] : redeemed.ofertas;
+    const originalPrice = Number(offer?.precio_original || 0);
+    const discountPrice = Number(offer?.precio_oferta || 0);
+    return res.status(200).json({ success: true, message: "¡Cupón validado correctamente!", offerTitle: offer?.titulo, discountPrice, originalPrice, savings: originalPrice - discountPrice });
   } catch (err: any) {
     console.error("Error en redeem:", err);
     return res.status(500).json({ success: false, error: err.message });

@@ -17,7 +17,8 @@ import {
   MoreHorizontal, 
   SlidersHorizontal,
   BookmarkCheck,
-  Sparkle
+  Sparkle,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Offer, Shop, Category } from '../types';
@@ -72,6 +73,7 @@ export default function CategoriesTab({
 
   // TikTok vertical active index
   const [activeTikTokIndex, setActiveTikTokIndex] = useState<number>(0);
+
   const tiktokContainerRef = useRef<HTMLDivElement>(null);
 
   // Populate initial likes, bookmarks and comments once
@@ -109,6 +111,21 @@ export default function CategoriesTab({
     }
     fetchComments();
   }, [offers]);
+
+  const handleDeleteComment = async (commentId: string, offerId: string) => {
+    if (!window.confirm("¿Seguro que querés eliminar este comentario?")) return;
+    if (supabase) {
+      const { error } = await supabase.from('comentarios').delete().eq('id', commentId);
+      if (error) {
+        alert("Error al eliminar comentario: " + error.message);
+        return;
+      }
+    }
+    setComments(prev => ({
+      ...prev,
+      [offerId]: (prev[offerId] || []).filter(c => c.id !== commentId)
+    }));
+  };
 
   const handleAddComment = async (offerId: string) => {
     const text = newCommentText[offerId]?.trim();
@@ -177,6 +194,10 @@ export default function CategoriesTab({
       return true;
     });
   }, [offers, shops, selectedCategory, selectedZone, maxPrice, onlyQr]);
+
+  useEffect(() => {
+    setActiveTikTokIndex(index => filteredOffers.length ? Math.min(index, filteredOffers.length - 1) : 0);
+  }, [filteredOffers.length]);
 
   const handleResetFilters = () => {
     setSelectedCategory('all');
@@ -704,6 +725,13 @@ export default function CategoriesTab({
                                         {comment.time}
                                       </span>
                                     </div>
+                                    <button
+                                      onClick={() => handleDeleteComment(comment.id, offer.id)}
+                                      className="text-slate-400 hover:text-red-500 dark:text-zinc-600 dark:hover:text-red-400 p-1 rounded-lg transition-colors cursor-pointer"
+                                      title="Eliminar comentario"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
                                   </motion.div>
                                 ))}
                               </div>
@@ -770,7 +798,7 @@ export default function CategoriesTab({
                 <div 
                   ref={tiktokContainerRef}
                   className="flex-1 w-full relative overflow-hidden bg-zinc-950"
-                  onDoubleClick={() => handleDoubleTap(filteredOffers[activeTikTokIndex].id)}
+                  onDoubleClick={() => filteredOffers[activeTikTokIndex] && handleDoubleTap(filteredOffers[activeTikTokIndex].id)}
                 >
                   <AnimatePresence mode="wait">
                     {filteredOffers.map((offer, index) => {

@@ -1,24 +1,34 @@
 import React, { useState } from 'react';
 import { X, QrCode, MapPin, Calendar, Check, Copy, Share2 } from 'lucide-react';
-import { Offer, Shop } from '../types';
+import { Offer, Shop, Coupon } from '../types';
 import ShopLogo from './ShopLogo';
 
 interface CouponModalProps {
   offer: Offer;
   shop: Shop | undefined;
   onClose: () => void;
-  onClaim: (offerId: string) => void;
+  onClaim: (offerId: string) => Promise<Coupon | null>;
 }
 
 export default function CouponModal({ offer, shop, onClose, onClaim }: CouponModalProps) {
   const [copied, setCopied] = useState(false);
-  const [isClaimed, setIsClaimed] = useState(false);
+  const [coupon, setCoupon] = useState<Coupon | null>(null);
+  const [isClaiming, setIsClaiming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const couponCode = offer.qrCodeValue || `OBERA-${offer.id.toUpperCase()}-QR`;
+  const couponCode = coupon?.token || '';
 
-  const handleClaim = () => {
-    setIsClaimed(true);
-    onClaim(offer.id);
+  const handleClaim = async () => {
+    setIsClaiming(true);
+    setError(null);
+    try {
+      const claimed = await onClaim(offer.id);
+      if (claimed) setCoupon(claimed);
+    } catch (err: any) {
+      setError(err.message || 'No se pudo activar el cupón.');
+    } finally {
+      setIsClaiming(false);
+    }
   };
 
   const handleCopy = () => {
@@ -68,19 +78,23 @@ export default function CouponModal({ offer, shop, onClose, onClaim }: CouponMod
             
             {/* Expiration Badge */}
             <div className="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-xs animate-pulse">
-              Vence hoy 23:59 hs
+              {coupon ? `Vence ${new Date(coupon.expiresAt).toLocaleString('es-AR')}` : 'Activá para generar tu cupón'}
             </div>
 
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`https://obera-en-oferta.vercel.app/canjear?id=${offer.id}`)}&color=09090b`}
-              alt="Código QR de Descuento"
-              className="w-40 h-40 object-contain transition-transform hover:scale-105"
-              referrerPolicy="no-referrer"
-            />
-            <div className="mt-4 flex items-center gap-1.5 px-3 py-1 bg-red-50 text-brand-red rounded-lg text-xs font-bold font-mono border border-red-100/50">
-              <QrCode className="w-3.5 h-3.5 text-red-500" />
-              {couponCode}
-            </div>
+            {coupon ? (
+              <>
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(coupon.token)}&color=09090b`}
+                  alt="Código QR de Descuento"
+                  className="w-40 h-40 object-contain transition-transform hover:scale-105"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="mt-4 flex items-center gap-1.5 px-3 py-1 bg-red-50 text-brand-red rounded-lg text-xs font-bold font-mono border border-red-100/50">
+                  <QrCode className="w-3.5 h-3.5 text-red-500" />
+                  {couponCode}
+                </div>
+              </>
+            ) : <p className="py-16 text-center text-sm font-semibold text-slate-500">Activá el cupón para generar un QR individual.</p>}
           </div>
 
           {/* Instructions */}
@@ -111,18 +125,20 @@ export default function CouponModal({ offer, shop, onClose, onClaim }: CouponMod
 
           {/* Footer Actions */}
           <div className="mt-6 space-y-2">
-            {!isClaimed ? (
+            {!coupon ? (
               <button
                 onClick={handleClaim}
+                disabled={isClaiming}
                 className="w-full py-3 bg-brand-orange hover:bg-brand-orange/95 dark:bg-indigo-600 dark:hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all hover:translate-y-[-1px] cursor-pointer text-xs"
               >
-                <Check className="w-4 h-4" /> Activar Cupón Ahora
+                <Check className="w-4 h-4" /> {isClaiming ? 'Activando…' : 'Activar Cupón Ahora'}
               </button>
             ) : (
               <div className="w-full py-3 bg-emerald-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-sm">
                 <Check className="w-4 h-4" /> ¡Cupón Activado con Éxito!
               </div>
             )}
+            {error && <p className="text-xs text-red-600 font-semibold text-center">{error}</p>}
 
             <div className="flex gap-2">
               <button
