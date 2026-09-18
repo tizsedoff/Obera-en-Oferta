@@ -435,7 +435,7 @@ export default function AdminPanel({
   };
 
   // --- OFFER ACTIONS ---
-  const saveOffer = (e: React.FormEvent) => {
+  const saveOffer = async (e: React.FormEvent) => {
     e.preventDefault();
     const parentShop = shops.find(s => s.id === offerForm.shopId);
     if (!parentShop) return;
@@ -448,7 +448,14 @@ export default function AdminPanel({
         shopName: parentShop.name,
         category: parentShop.category
       } : o);
-      onUpdateOffers(updated);
+      const res = await fetch('/api/offers', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingOffer.id, ...offerForm, originalPrice: Number(offerForm.originalPrice), discountPrice: Number(offerForm.discountPrice) })
+      });
+      if (!res.ok) throw new Error('No se pudo guardar la oferta en la base de datos.');
+      const savedOffer = await res.json();
+      onUpdateOffers(updated.map(offer => offer.id === editingOffer.id ? { ...offer, ...savedOffer } : offer));
       setEditingOffer(null);
     } else {
       // Add new offer
@@ -469,7 +476,14 @@ export default function AdminPanel({
         couponsClaimed: 0,
         isFlashSale: offerForm.isFlashSale
       };
-      onUpdateOffers([newOffer, ...offers]);
+      const res = await fetch('/api/offers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newOffer, shopId: parentShop.id, shopName: parentShop.name })
+      });
+      if (!res.ok) throw new Error('No se pudo guardar la oferta en la base de datos.');
+      const savedOffer = await res.json();
+      onUpdateOffers([savedOffer, ...offers]);
       setIsAddingOffer(false);
 
       // Trigger notification

@@ -228,6 +228,33 @@ export default async function handler(req: any, res: any) {
     }
   }
 
+  // PUT Update Offer
+  if (req.method === "PUT") {
+    try {
+      const { id, title, description, originalPrice, discountPrice, category, expiryDate, hasQrCoupon, isFlashSale, image } = req.body || {};
+      if (!id) return res.status(400).json({ error: "Missing offer ID." });
+      const cleanId = toUUID(id, "offer");
+      const update = {
+        titulo: title || "",
+        descripcion: description || "",
+        precio_original: Math.round(Number(originalPrice || 0)),
+        precio_oferta: Math.round(Number(discountPrice || 0)),
+        categoria: category || "",
+        fecha_fin: expiryDate || "",
+        imagen_url: image || "",
+        activo: true
+      };
+      if (supabase) {
+        const { data, error } = await supabase.from("ofertas").update(update).eq("id", cleanId).select("*").single();
+        if (error) return res.status(500).json({ error: error.message });
+        return res.status(200).json(mapDbToOffer(data, []));
+      }
+      return res.status(200).json({ id: cleanId, ...req.body });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  }
+
   // DELETE Offer
   if (req.method === "DELETE") {
     try {
