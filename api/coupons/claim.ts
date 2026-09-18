@@ -11,12 +11,12 @@ export default async function handler(req: any, res: any) {
     const supabase = createClient(process.env.SUPABASE_URL || "", process.env.SUPABASE_SERVICE_KEY || "");
     const { data: offer, error: offerError } = await supabase
       .from("ofertas")
-      .select("id, activo, fecha_fin, expires_at")
+      .select("id, activo, fecha_fin")
       .eq("id", offerId)
       .single();
 
     if (offerError || !offer) return res.status(404).json({ error: "Oferta no encontrada." });
-    const expiresAt = offer.expires_at || offer.fecha_fin;
+    const expiresAt = offer.fecha_fin;
     if (!expiresAt || Number.isNaN(new Date(expiresAt).getTime()) || new Date(expiresAt).getTime() <= Date.now()) {
       return res.status(409).json({ error: "La oferta está vencida o no tiene una fecha válida." });
     }
@@ -25,8 +25,8 @@ export default async function handler(req: any, res: any) {
     const token = `OBERA-${crypto.randomBytes(24).toString("base64url")}`;
     const { data, error } = await supabase
       .from("cupones_canjeados")
-      .insert([{ oferta_id: offerId, codigo_unico: token, usado: false, expires_at: expiresAt }])
-      .select("id, codigo_unico, expires_at")
+      .insert([{ oferta_id: offerId, codigo_unico: token, usado: false }])
+      .select("id, codigo_unico")
       .single();
 
     if (error) {
@@ -34,7 +34,7 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: "No se pudo generar el cupón." });
     }
 
-    return res.status(200).json({ id: data.id, token: data.codigo_unico, codigoUnico: data.codigo_unico, expiresAt: data.expires_at || expiresAt });
+    return res.status(200).json({ id: data.id, token: data.codigo_unico, codigoUnico: data.codigo_unico, expiresAt });
   } catch (err: any) {
     console.error("Error en claim:", err);
     return res.status(500).json({ error: err.message });
