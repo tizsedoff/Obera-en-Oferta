@@ -10,6 +10,8 @@
 
 .pb-safe-bottom { padding-bottom: var(--safe-bottom); }
 .pt-safe-top { padding-top: var(--safe-top); }
+.mobile-content-safe { padding-bottom: calc(4rem + var(--safe-bottom)); }
+.mobile-vh { min-height: 100vh; min-height: 100dvh; }
 
 
 @theme {

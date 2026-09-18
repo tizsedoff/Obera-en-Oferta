@@ -38,8 +38,8 @@ export default function CouponModal({ offer, shop, onClose, onClaim }: CouponMod
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/70 dark:bg-zinc-950/85 backdrop-blur-xs animate-fade-in">
-      <div className="relative w-full max-w-sm bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl animate-in scale-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pt-[calc(1rem+var(--safe-top))] pb-[calc(1rem+var(--safe-bottom))] bg-zinc-950/70 dark:bg-zinc-950/85 backdrop-blur-xs animate-fade-in">
+      <div className="relative w-full max-w-sm max-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom)-2rem)] overflow-y-auto bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl animate-in scale-in-95 duration-200">
         {/* Close Button */}
         <button
           onClick={onClose}

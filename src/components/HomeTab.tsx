@@ -169,10 +169,10 @@ export default function HomeTab({
   };
 
   return (
-    <div className="relative w-full flex justify-center bg-zinc-50 dark:bg-zinc-950 transition-colors duration-300 h-[calc(100vh-56px)] md:h-[calc(100vh-80px)] md:py-2 overflow-hidden">
+    <div className="relative w-full flex justify-center bg-zinc-50 dark:bg-zinc-950 transition-colors duration-300 min-h-[calc(100vh-56px)] min-h-[calc(100dvh-56px)] md:min-h-[calc(100vh-80px)] md:min-h-[calc(100dvh-80px)] md:py-2 overflow-hidden pb-[calc(3.5rem+var(--safe-bottom))] md:pb-0">
       
       {/* Outer Phone Mockup wrapper on Desktop, full screen on Mobile */}
-      <div className="relative w-full max-w-md md:max-w-3xl lg:max-w-4xl h-full bg-black shadow-2xl md:rounded-3xl overflow-hidden border border-zinc-800/20 flex flex-col justify-between">
+      <div className="relative w-full max-w-md md:max-w-3xl lg:max-w-4xl min-h-0 h-full bg-black shadow-2xl md:rounded-3xl overflow-hidden border border-zinc-800/20 flex flex-col justify-between">
         
         {/* FLOATING TOP OVERLAY HEADER - STATIC ABOVE SCROLLING CARDS */}
         <div className="absolute top-0 left-0 right-0 z-30 bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 flex flex-col gap-3">

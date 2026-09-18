@@ -20,8 +20,8 @@ export default function OfferDetailModal({ offer, shop, onClose, onOpenCoupon, o
   const whatsappUrl = `https://wa.me/${shopPhone}?text=${encodeURIComponent(whatsappMessage)}`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/70 dark:bg-zinc-950/85 backdrop-blur-xs animate-fade-in">
-      <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl overflow-hidden shadow-2xl animate-in slide-in-from-bottom-6 duration-300 border border-slate-100 dark:border-zinc-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pt-[calc(1rem+var(--safe-top))] pb-[calc(1rem+var(--safe-bottom))] bg-zinc-950/70 dark:bg-zinc-950/85 backdrop-blur-xs animate-fade-in">
+      <div className="relative w-full max-w-lg max-h-[calc(100dvh-var(--safe-top)-var(--safe-bottom)-2rem)] overflow-y-auto bg-white dark:bg-zinc-900 rounded-3xl shadow-2xl animate-in slide-in-from-bottom-6 duration-300 border border-slate-100 dark:border-zinc-800">
         
         {/* Header Image section */}
         <div className="relative h-64 sm:h-72 w-full bg-slate-100 dark:bg-zinc-950">
