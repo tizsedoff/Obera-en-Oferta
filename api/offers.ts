@@ -47,7 +47,6 @@ function mapOfferToDb(offer: any) {
     imagen_url: offer.image || "",
     precio_oferta: Math.round(Number(offer.discountPrice || 0)),
     fecha_fin: offer.expiryDate || "",
-    expires_at: offer.expiryDate || null,
     activo: true
   };
 }
@@ -67,7 +66,7 @@ function mapDbToOffer(row: any, allShops: any[]) {
     discountPrice: Number(row.precio_oferta || 0),
     image: row.imagen_url || initial?.image || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80",
     category: row.categoria || "",
-    expiryDate: row.expires_at || row.fecha_fin || "",
+    expiryDate: row.fecha_fin || "",
     hasQrCoupon: initial?.hasQrCoupon !== undefined ? initial.hasQrCoupon : true,
     qrCodeValue: initial?.qrCodeValue || `OBERACLUB-${row.id.slice(0, 4).toUpperCase()}`,
     views: 0,
@@ -138,7 +137,7 @@ export default async function handler(req: any, res: any) {
       }
 
       try {
-        const { data, error } = await supabase.from("ofertas").select("*").gt("expires_at", new Date().toISOString());
+        const { data, error } = await supabase.from("ofertas").select("*");
         if (error) throw error;
 
         if (data && data.length > 0) {
