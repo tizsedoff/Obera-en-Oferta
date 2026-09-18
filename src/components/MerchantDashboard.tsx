@@ -67,6 +67,8 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
   const [scannerInstance, setScannerInstance] = useState<any>(null);
   const [scanResult, setScanResult] = useState<{ success: boolean; message: string; data?: any } | null>(null);
   const [scanLoading, setScanLoading] = useState(false);
+  const processingScanRef = React.useRef(false);
+  const lastScannedCodeRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     return () => {
@@ -98,14 +100,18 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
             }
           },
           (decodedText) => {
+            const normalizedCode = decodedText.trim();
+            if (!normalizedCode || processingScanRef.current || lastScannedCodeRef.current === normalizedCode) return;
+            processingScanRef.current = true;
+            lastScannedCodeRef.current = normalizedCode;
             html5QrCode.stop().then(() => {
               setIsScanning(false);
               setScannerInstance(null);
-              handleValidateCoupon(decodedText);
+              handleValidateCoupon(normalizedCode);
             }).catch((err) => {
               console.error("Stop scan error", err);
               setIsScanning(false);
-              handleValidateCoupon(decodedText);
+              handleValidateCoupon(normalizedCode);
             });
           },
           () => {
@@ -142,14 +148,17 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
   };
 
   const handleValidateCoupon = async (code: string) => {
-    if (!code || !code.trim()) return;
+    const normalizedCode = code.trim();
+    if (!normalizedCode || processingScanRef.current && lastScannedCodeRef.current !== normalizedCode) return;
+    processingScanRef.current = true;
+    lastScannedCodeRef.current = normalizedCode;
     setScanLoading(true);
     setScanResult(null);
     try {
       const res = await fetch("/api/coupons/redeem", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scannedCode: code.trim() })
+        body: JSON.stringify({ scannedCode: normalizedCode })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -177,7 +186,7 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
       setScanLoading(false);
     }
   };
-  
+
   // Custom image from gallery/device files
   const [customImage, setCustomImage] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -757,6 +766,8 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
                   stopCameraScan();
                   setActiveScannerTab('scan');
                   setScanResult(null);
+                  processingScanRef.current = false;
+                  lastScannedCodeRef.current = null;
                 }}
                 className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                   activeScannerTab === 'scan'
@@ -773,6 +784,8 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
                   stopCameraScan();
                   setActiveScannerTab('manual');
                   setScanResult(null);
+                  processingScanRef.current = false;
+                  lastScannedCodeRef.current = null;
                 }}
                 className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
                   activeScannerTab === 'manual'
