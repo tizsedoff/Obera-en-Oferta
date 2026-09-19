@@ -1,21 +1,40 @@
 import { createClient } from "@supabase/supabase-js";
 
-// Protección simple: mismo nivel que el resto del panel de admin (contraseña compartida).
-// TODO recomendado a futuro: reemplazar por una verdadera sesión de admin.
-const ADMIN_PASSWORD = process.env.ADMIN_PANEL_PASSWORD || "apsdev";
+// --- Autenticación de administradores (reemplaza la contraseña compartida) ---
+// Verifica el JWT de Supabase Auth enviado en "Authorization: Bearer <token>" y confirma
+// que el usuario figure en public.admins con un rol habilitado para usar el panel.
+const PANEL_ROLES = ["superadmin", "admin"];
+
+async function getAdminFromRequest(req: any, supabase: any): Promise<{ userId: string; role: string } | null> {
+  const authHeader = req.headers?.authorization || "";
+  const token = typeof authHeader === "string" && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  if (!token || !supabase) return null;
+
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) return null;
+
+  const { data: row, error: rowError } = await supabase
+    .from("admins")
+    .select("role")
+    .eq("id", data.user.id)
+    .maybeSingle();
+  if (rowError || !row || !PANEL_ROLES.includes(row.role)) return null;
+
+  return { userId: data.user.id, role: row.role };
+}
 
 export default async function handler(req: any, res: any) {
-  const providedPassword = req.headers["x-admin-password"] || "";
-  if (providedPassword !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: "No autorizado." });
-  }
-
   const supabaseUrl = process.env.SUPABASE_URL || "";
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || "";
   if (!supabaseUrl || !supabaseServiceKey) {
     return res.status(500).json({ error: "Configuración de Supabase faltante en el servidor." });
   }
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  const admin = await getAdminFromRequest(req, supabase);
+  if (!admin) {
+    return res.status(401).json({ error: "No autorizado." });
+  }
 
   if (req.method === "GET") {
     try {
@@ -53,6 +72,9 @@ export default async function handler(req: any, res: any) {
       const { id } = req.query;
       if (!id) {
         return res.status(400).json({ error: "Falta el ID del usuario." });
+      }
+      if (id === admin.userId) {
+        return res.status(400).json({ error: "No podés eliminar tu propia cuenta desde el panel." });
       }
 
       // Elimina el usuario de Supabase Auth; el trigger/FK con "on delete cascade"

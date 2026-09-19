@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Edit, Trash2, KeyRound, Save, CheckCircle, AlertTriangle, Building, Tag, Compass, Sparkles, ExternalLink, MapPin, Map as MapIcon, Sliders, Settings, Check, RefreshCw, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Shop, Offer, Notification, Category, MapConfig, SiteConfig } from '../types';
 import ShopLogo from './ShopLogo';
+import { supabase } from '../supabaseClient';
 
 interface AdminPanelProps {
   shops: Shop[];
@@ -39,8 +40,45 @@ export default function AdminPanel({
   onClose,
 }: AdminPanelProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
+
+  // Roles de la tabla "admins" que pueden usar el panel (el servidor lo vuelve a verificar en cada request)
+  const PANEL_ROLES = ['superadmin', 'admin'];
+
+  const checkAdminAccess = async (userId: string): Promise<boolean> => {
+    const { data, error } = await supabase
+      .from('admins')
+      .select('role')
+      .eq('id', userId)
+      .maybeSingle();
+    return !error && !!data && PANEL_ROLES.includes(data.role);
+  };
+
+  // Token de la sesión de Supabase para autenticar las llamadas a /api/*
+  const authHeaders = async (): Promise<Record<string, string>> => {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  // Si ya hay una sesión de administrador abierta, no volver a pedir credenciales
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const uid = data.session?.user?.id;
+      if (uid && (await checkAdminAccess(uid)) && !cancelled) {
+        setIsAuthenticated(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   const [activeTab, setActiveTab] = useState<'shops' | 'offers' | 'clients' | 'categories' | 'zones' | 'map' | 'site'>('shops');
 
@@ -71,7 +109,7 @@ export default function AdminPanel({
     setUsersError(null);
     try {
       const res = await fetch('/api/admin/users', {
-        headers: { 'x-admin-password': password }
+        headers: await authHeaders()
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -101,7 +139,7 @@ export default function AdminPanel({
     try {
       const res = await fetch(`/api/admin/users?id=${id}`, {
         method: 'DELETE',
-        headers: { 'x-admin-password': password }
+        headers: await authHeaders()
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -254,13 +292,30 @@ export default function AdminPanel({
     setTimeout(() => setSiteSaved(false), 3000);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === 'apsdev') {
+    if (loggingIn) return;
+    setLoggingIn(true);
+    setAuthError('');
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      if (error || !data.user) {
+        setAuthError('Email o contraseña incorrectos. ¡Che, probá de nuevo!');
+        return;
+      }
+      if (!(await checkAdminAccess(data.user.id))) {
+        setAuthError('Esta cuenta no tiene permisos de administrador.');
+        return;
+      }
+      setPassword('');
       setIsAuthenticated(true);
-      setAuthError('');
-    } else {
-      setAuthError('Contraseña incorrecta. ¡Che, probá de nuevo!');
+    } catch {
+      setAuthError('No se pudo iniciar sesión. Revisá tu conexión y probá de nuevo.');
+    } finally {
+      setLoggingIn(false);
     }
   };
 
@@ -303,7 +358,7 @@ export default function AdminPanel({
         // Edit existing shop
         const res = await fetch('/api/shops', {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', 'x-admin-password': password },
+          headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
           body: JSON.stringify({ id: editingShop.id, ...finalShopForm })
         });
         if (!res.ok) {
@@ -403,7 +458,7 @@ export default function AdminPanel({
     try {
       const res = await fetch(`/api/shops?id=${shopId}`, {
         method: 'DELETE',
-        headers: { 'x-admin-password': password }
+        headers: await authHeaders()
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -572,20 +627,35 @@ export default function AdminPanel({
             <div className="space-y-1.5">
               <h2 className="font-display font-black text-slate-900 dark:text-zinc-50 text-xl tracking-tight">APS DEVELOPER PANEL</h2>
               <p className="text-xs text-slate-500 dark:text-zinc-400">
-                Sección exclusiva de administración de Oberá en Oferta. Introducí tu contraseña.
+                Sección exclusiva de administración de Oberá en Oferta. Iniciá sesión con tu cuenta de administrador.
               </p>
             </div>
 
             <form onSubmit={handleLogin} className="w-full space-y-4 pt-2">
               <div className="space-y-1 text-left">
-                <label className="text-[10px] font-bold text-slate-450 dark:text-zinc-500 uppercase tracking-wider block">Contraseña del Administrador</label>
+                <label className="text-[10px] font-bold text-slate-450 dark:text-zinc-500 uppercase tracking-wider block">Email del Administrador</label>
+                <input
+                  type="email"
+                  placeholder="tu@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  required
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl text-slate-800 dark:text-zinc-100 placeholder-slate-400 text-xs font-bold focus:outline-none focus:border-brand-orange focus:ring-1 focus:ring-brand-orange"
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-1 text-left">
+                <label className="text-[10px] font-bold text-slate-450 dark:text-zinc-500 uppercase tracking-wider block">Contraseña</label>
                 <input
                   type="password"
                   placeholder="Contraseña"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
                   className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 rounded-2xl text-slate-800 dark:text-zinc-100 placeholder-slate-400 text-xs font-bold focus:outline-none focus:border-brand-orange focus:ring-1 focus:ring-brand-orange"
-                  autoFocus
                 />
               </div>
 
@@ -598,9 +668,10 @@ export default function AdminPanel({
 
               <button
                 type="submit"
-                className="w-full py-3 bg-[#2B0E67] hover:bg-[#2B0E67]/90 text-white font-extrabold rounded-2xl text-xs transition-colors cursor-pointer shadow-md"
+                disabled={loggingIn}
+                className="w-full py-3 bg-[#2B0E67] hover:bg-[#2B0E67]/90 disabled:opacity-60 text-white font-extrabold rounded-2xl text-xs transition-colors cursor-pointer shadow-md"
               >
-                Acceder al Panel
+                {loggingIn ? 'Ingresando…' : 'Acceder al Panel'}
               </button>
             </form>
 
