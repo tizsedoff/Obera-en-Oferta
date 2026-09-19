@@ -151,7 +151,7 @@ export default function AiChatbot({ shops = [], offers = [] }: AiChatbotProps) {
         const botMessage: Message = {
           id: `bot-${Date.now()}`,
           sender: 'bot',
-          text: '🧉 **[APS DEVELOPER]** ¡Hola! Detecté tu solicitud de apertura de panel de control. Se ha desplegado el diálogo de contraseña. Por favor ingresá **apsdev** para acceder a todas las funciones.',
+          text: '🧉 **[APS DEVELOPER]** ¡Hola! Detecté tu solicitud de apertura de panel de control. Se abrió el panel: iniciá sesión con tu cuenta de administrador para acceder a todas las funciones.',
           timestamp: new Date(),
         };
         setMessages(prev => [...prev, botMessage]);

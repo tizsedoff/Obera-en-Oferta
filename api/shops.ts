@@ -3,6 +3,29 @@ import crypto from "crypto";
 
 const INITIAL_SHOPS: any[] = [];
 
+// --- Autenticación de administradores (reemplaza la contraseña compartida) ---
+// Verifica el JWT de Supabase Auth enviado en "Authorization: Bearer <token>" y confirma
+// que el usuario figure en public.admins con un rol habilitado para usar el panel.
+const PANEL_ROLES = ["superadmin", "admin"];
+
+async function getAdminFromRequest(req: any, supabase: any): Promise<{ userId: string; role: string } | null> {
+  const authHeader = req.headers?.authorization || "";
+  const token = typeof authHeader === "string" && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  if (!token || !supabase) return null;
+
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) return null;
+
+  const { data: row, error: rowError } = await supabase
+    .from("admins")
+    .select("role")
+    .eq("id", data.user.id)
+    .maybeSingle();
+  if (rowError || !row || !PANEL_ROLES.includes(row.role)) return null;
+
+  return { userId: data.user.id, role: row.role };
+}
+
 function toUUID(id: string, prefix: 'shop' | 'offer'): string {
   if (!id) return crypto.randomUUID();
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
@@ -240,12 +263,11 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // PUT: editar negocio existente (el dueño autenticado, o el admin con su contraseña)
+  // PUT: editar negocio existente (el dueño autenticado, o un administrador de la tabla admins)
   if (req.method === "PUT") {
     try {
-      const ADMIN_PASSWORD = process.env.ADMIN_PANEL_PASSWORD || "apsdev";
-      const providedAdminPassword = req.headers["x-admin-password"] || "";
-      const isAdmin = providedAdminPassword === ADMIN_PASSWORD;
+      const adminContext = await getAdminFromRequest(req, supabase);
+      const isAdmin = !!adminContext;
 
       let verifiedUserId: string | null = null;
 
@@ -327,9 +349,8 @@ export default async function handler(req: any, res: any) {
 
   // DELETE: eliminar negocio (solo admin). Las ofertas asociadas se borran en cascada por la base de datos.
   if (req.method === "DELETE") {
-    const ADMIN_PASSWORD = process.env.ADMIN_PANEL_PASSWORD || "apsdev";
-    const providedPassword = req.headers["x-admin-password"] || "";
-    if (providedPassword !== ADMIN_PASSWORD) {
+    const adminContext = await getAdminFromRequest(req, supabase);
+    if (!adminContext) {
       return res.status(401).json({ error: "No autorizado." });
     }
 
