@@ -22,7 +22,9 @@ async function sincronizarSuscripcionPendiente(supabase: any, mpToken: string, s
     if (!r.ok) return false;
     const pa = await r.json();
     if (String(pa.external_reference || "") !== susc.id) return false;
-    if (pa.status === "authorized" && Math.abs(Number(pa.auto_recurring?.transaction_amount) - Number(susc.monto_ars)) < 0.01) {
+    const montoMp = Number(pa.auto_recurring?.transaction_amount);
+    const montosValidos = [susc.monto_ars, susc.monto_lista_ars, susc.monto_promo_ars].filter((m: any) => m !== null && m !== undefined);
+    if (pa.status === "authorized" && montosValidos.some((m: any) => Math.abs(montoMp - Number(m)) < 0.01)) {
       const { error } = await supabase.rpc("activar_suscripcion", { p_susc_id: susc.id });
       return !error;
     }
@@ -55,12 +57,7 @@ export default async function handler(req: any, res: any) {
     const { data: userData, error: userError } = await supabase.auth.getUser(token);
     if (userError || !userData?.user) return res.status(401).json({ error: "Sesión inválida o expirada." });
 
-    const { data: planes } = await supabase
-      .from("planes")
-      .select("id, tipo, nombre, descripcion, precio_ars, duracion_dias, max_ofertas_activas")
-      .eq("activo", true)
-      .order("orden", { ascending: true });
-
+    const columnasPlan = "id, tipo, nombre, descripcion, precio_ars, duracion_dias, max_ofertas_activas, emoji, caracteristicas, recomendado, negocio_id";
     const pagosDisponibles = process.env.MP_ACCESS_TOKEN ? true : false;
     const suscripcionesDisponibles = suscripcionesHabilitadas();
     const demoDisponible = demoHabilitado();
@@ -72,12 +69,36 @@ export default async function handler(req: any, res: any) {
       .eq("owner_id", userData.user.id)
       .maybeSingle();
     if (negocioError) return res.status(500).json({ error: "No se pudo leer tu negocio." });
-    if (!negocio) return res.status(200).json({ negocio: null, planes: planes || [], pagosDisponibles, suscripcionesDisponibles, demoDisponible });
+    if (!negocio) {
+      const { data: planesPublicos } = await supabase
+        .from("planes").select(columnasPlan).eq("activo", true).is("negocio_id", null).order("orden", { ascending: true });
+      return res.status(200).json({ negocio: null, planes: planesPublicos || [], pagosDisponibles, suscripcionesDisponibles, demoDisponible });
+    }
+
+    // Planes públicos + el plan a medida de este negocio (si tiene), con el precio final que le corresponde
+    const { data: planesRaw } = await supabase
+      .from("planes")
+      .select(columnasPlan)
+      .eq("activo", true)
+      .or(`negocio_id.is.null,negocio_id.eq.${negocio.id}`)
+      .order("orden", { ascending: true });
+    const { data: preciosRaw } = await supabase.rpc("precios_negocio", { p_negocio: negocio.id });
+    const precios = new Map<string, any>((preciosRaw || []).map((x: any) => [x.plan_id, x]));
+    const planes = (planesRaw || []).map((p: any) => {
+      const x = precios.get(p.id);
+      const conPromo = x && x.promo_id && Number(x.pct) > 0;
+      return {
+        ...p,
+        precio_final: x ? Number(x.monto) : Number(p.precio_ars),
+        descuento_pct: x ? Number(x.pct) : 0,
+        promo: conPromo ? { nombre: x.promo_nombre, meses: x.promo_meses, restantes: x.promo_restantes } : null,
+      };
+    });
 
     // Suscripción vigente (modo prueba)
     let suscripcion: any = null;
     if (suscripcionesDisponibles) {
-      const cols = "id, plan_id, estado, con_trial, trial_dias, monto_ars, mp_preapproval_id";
+      const cols = "id, plan_id, estado, con_trial, trial_dias, monto_ars, monto_lista_ars, monto_promo_ars, mp_preapproval_id";
       const consultar = () =>
         supabase
           .from("suscripciones")
@@ -103,7 +124,17 @@ export default async function handler(req: any, res: any) {
     const vigente =
       negocio.plan_id !== "gratis" && negocio.plan_vence_at && new Date(negocio.plan_vence_at) > new Date();
     const planEfectivoId = vigente ? negocio.plan_id : "gratis";
-    const planEfectivo = (planes || []).find((p: any) => p.id === planEfectivoId);
+    const { data: planEfectivo } = await supabase
+      .from("planes").select("nombre, max_ofertas_activas").eq("id", planEfectivoId).maybeSingle();
+
+    const { data: solicitud } = await supabase
+      .from("solicitudes_plan")
+      .select("cantidad_ofertas, created_at")
+      .eq("negocio_id", negocio.id)
+      .eq("estado", "pendiente")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     const hoy = new Date().toISOString().slice(0, 10);
     const { count } = await supabase
@@ -129,7 +160,8 @@ export default async function handler(req: any, res: any) {
         maxOfertasActivas: planEfectivo?.max_ofertas_activas ?? null,
         ofertasActivas: count || 0,
       },
-      planes: planes || [],
+      planes,
+      solicitudPersonalizado: solicitud ? { cantidadOfertas: solicitud.cantidad_ofertas, creadaAt: solicitud.created_at } : null,
       pagos: pagos || [],
       pagosDisponibles,
       suscripcionesDisponibles,

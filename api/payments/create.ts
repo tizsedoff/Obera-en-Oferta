@@ -47,7 +47,7 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: "Falta el plan a contratar." });
     }
     const { data: plan } = await supabase.from("planes").select("*").eq("id", planId).eq("activo", true).maybeSingle();
-    if (!plan || Number(plan.precio_ars) <= 0) {
+    if (!plan || (plan.tipo !== "plan" && plan.tipo !== "extra") || Number(plan.precio_ars) <= 0) {
       return res.status(400).json({ error: "Ese plan no existe o no se puede contratar." });
     }
 
@@ -59,6 +59,21 @@ export default async function handler(req: any, res: any) {
       .maybeSingle();
     if (negocioError) return res.status(500).json({ error: "No se pudo verificar tu negocio." });
     if (!negocio) return res.status(403).json({ error: "Necesitás tener un negocio registrado para contratar un plan." });
+
+    // Un plan exclusivo (a medida) solo lo puede contratar el negocio al que pertenece
+    if (plan.negocio_id && plan.negocio_id !== negocio.id) {
+      return res.status(403).json({ error: "Ese plan no está disponible para tu negocio." });
+    }
+
+    // Precio final para este negocio (aplica la promoción vigente, si corresponde)
+    const { data: precioRows, error: precioError } = await supabase.rpc("calcular_precio", { p_negocio: negocio.id, p_plan: plan.id });
+    const precio = Array.isArray(precioRows) ? precioRows[0] : null;
+    if (precioError || !precio) {
+      console.error("Error calculando el precio:", precioError);
+      return res.status(500).json({ error: "No se pudo calcular el precio." });
+    }
+    const monto = Number(precio.o_monto);
+    if (!(monto > 0)) return res.status(400).json({ error: "Ese plan no se puede contratar." });
 
     // 4) Los extras (destacar) exigen una oferta activa del propio negocio
     let ofertaTitulo = "";
@@ -95,7 +110,10 @@ export default async function handler(req: any, res: any) {
         owner_id: user.id,
         plan_id: plan.id,
         oferta_id: ofertaIdFinal,
-        monto_ars: plan.precio_ars,
+        monto_ars: monto,
+        monto_lista_ars: Number(precio.o_lista),
+        descuento_pct: Number(precio.o_pct) || 0,
+        promo_id: precio.o_promo_id || null,
         estado: "pendiente",
       })
       .select("id")
@@ -128,14 +146,16 @@ export default async function handler(req: any, res: any) {
       notificationUrl += `?x-vercel-protection-bypass=${encodeURIComponent(process.env.VERCEL_AUTOMATION_BYPASS_SECRET)}`;
     }
 
-    const titulo = ofertaTitulo ? `${plan.nombre}: ${ofertaTitulo}` : `Plan ${plan.nombre}`;
+    const titulo = ofertaTitulo
+      ? `${plan.nombre}: ${ofertaTitulo}`
+      : `Plan ${plan.nombre}${precio.o_promo_nombre ? ` (${precio.o_promo_nombre} ${Number(precio.o_pct)}% OFF)` : ""}`;
     const preferenceBody = {
       items: [
         {
           id: plan.id,
           title: `${titulo} - Oberá en Oferta`.slice(0, 250),
           quantity: 1,
-          unit_price: Number(plan.precio_ars),
+          unit_price: monto,
           currency_id: "ARS",
         },
       ],

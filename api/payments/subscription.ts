@@ -73,7 +73,7 @@ export default async function handler(req: any, res: any) {
         .limit(1)
         .maybeSingle();
       if (!susc) return res.status(404).json({ error: "No tenés una suscripción activa." });
-      const { data: aplicado, error: rpcError } = await supabase.rpc("aplicar_cobro_suscripcion", {
+      const { data: cobro, error: rpcError } = await supabase.rpc("aplicar_cobro_suscripcion", {
         p_susc_id: susc.id,
         p_mp_payment_id: `DEMO-PAY-${crypto.randomUUID()}`,
       });
@@ -81,7 +81,7 @@ export default async function handler(req: any, res: any) {
         console.error("Error simulando el cobro:", rpcError);
         return res.status(500).json({ error: "No se pudo simular el cobro." });
       }
-      return res.status(200).json({ ok: true, aplicado: !!aplicado });
+      return res.status(200).json({ ok: true, aplicado: !!cobro?.aplicado, nuevoMonto: cobro?.nuevo_monto ?? null });
     }
 
     // ---------- Cancelar ----------
@@ -121,9 +121,21 @@ export default async function handler(req: any, res: any) {
     if (typeof planId !== "string" || !planId) return res.status(400).json({ error: "Falta el plan." });
 
     const { data: plan } = await supabase.from("planes").select("*").eq("id", planId).eq("activo", true).maybeSingle();
-    if (!plan || plan.tipo !== "plan" || Number(plan.precio_ars) <= 0 || !plan.duracion_dias) {
+    if (!plan || plan.tipo !== "plan" || Number(plan.precio_ars) <= 0) {
       return res.status(400).json({ error: "Ese plan no admite suscripción." });
     }
+    if (plan.negocio_id && plan.negocio_id !== negocio.id) {
+      return res.status(403).json({ error: "Ese plan no está disponible para tu negocio." });
+    }
+
+    // Precio para este negocio: si hay una promoción vigente, los primeros ciclos salen con descuento
+    const { data: precioRows, error: precioError } = await supabase.rpc("calcular_precio", { p_negocio: negocio.id, p_plan: plan.id });
+    const precio = Array.isArray(precioRows) ? precioRows[0] : null;
+    if (precioError || !precio) {
+      console.error("Error calculando el precio:", precioError);
+      return res.status(500).json({ error: "No se pudo calcular el precio." });
+    }
+    const monto = Number(precio.o_monto);
 
     const { data: activa } = await supabase
       .from("suscripciones")
@@ -154,7 +166,12 @@ export default async function handler(req: any, res: any) {
         negocio_id: negocio.id,
         owner_id: user.id,
         plan_id: plan.id,
-        monto_ars: plan.precio_ars,
+        monto_ars: monto,
+        monto_lista_ars: Number(precio.o_lista),
+        monto_promo_ars: monto,
+        descuento_pct: Number(precio.o_pct) || 0,
+        promo_id: precio.o_promo_id || null,
+        promo_ciclos_restantes: precio.o_promo_id ? Number(precio.o_promo_restantes) || 0 : 0,
         con_trial: conTrial,
         trial_dias: conTrial ? TRIAL_DIAS : null,
         estado: "pendiente",
@@ -190,9 +207,9 @@ export default async function handler(req: any, res: any) {
 
     const origin = getOrigin(req);
     const autoRecurring: Record<string, unknown> = {
-      frequency: Number(plan.duracion_dias),
-      frequency_type: "days",
-      transaction_amount: Number(plan.precio_ars),
+      frequency: 1,
+      frequency_type: "months",
+      transaction_amount: monto,
       currency_id: "ARS",
     };
     if (conTrial) {
@@ -203,7 +220,7 @@ export default async function handler(req: any, res: any) {
       method: "POST",
       headers: { Authorization: `Bearer ${mpToken}`, "Content-Type": "application/json", "X-Idempotency-Key": susc.id },
       body: JSON.stringify({
-        reason: `Suscripción plan ${plan.nombre} - Oberá en Oferta`.slice(0, 250),
+        reason: `Suscripción mensual plan ${plan.nombre} - Oberá en Oferta`.slice(0, 250),
         external_reference: susc.id,
         payer_email: email,
         back_url: `${origin}/?suscripcion=ok`,

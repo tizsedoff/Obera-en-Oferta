@@ -16,7 +16,7 @@ El endpoint nunca confía en el cuerpo del mensaje: consulta el pago a Mercado P
 
 ## Cambiar precios o límites (sin tocar código)
 ```sql
-update public.planes set precio_ars = 12900 where id = 'pro';
+update public.planes set precio_ars = 12900 where id = 'negocio';
 update public.planes set max_ofertas_activas = 3 where id = 'gratis';
 ```
 Los precios que trae la migración son de ejemplo.
@@ -65,3 +65,27 @@ Para probar todo el flujo sin cuenta de Mercado Pago: en "Mi plan y pagos" apare
 - Sin `MP_ACCESS_TOKEN` solo se ven los botones demo; con el token cargado se ven los reales y los demo juntos.
 - "Simular cobro del ciclo" equivale al cobro que Mercado Pago haría cuando termina la prueba: suma otros `duracion_dias` al plan. Sirve para probar renovaciones sin esperar 15 días.
 - Para dejar los datos de prueba limpios: `delete from public.pagos where mp_status = 'demo';` y, si hace falta, restablecer el negocio con `update public.negocios set plan_id='gratis', plan_vence_at=null, trial_usado=false where id='<id>';`.
+
+
+---
+
+## Planes, promociones y cobro mensual (todo editable desde el admin)
+
+**Planes:** Emprendedor (5 ofertas), Negocio (15), Comercio (30) y la tarjeta Personalizado. Más "Gratis" (2 ofertas), que es el plan al que vuelve un negocio cuando vence el suyo. Precios, textos, características, emoji, orden, "Recomendado" y activo/inactivo se editan en el panel admin → **💳 Planes y promos**. Los precios de la migración son de EJEMPLO.
+
+> Las características ("Destacados incluidos", "Estadísticas", etc.) hoy son **texto informativo**. Lo único que el sistema hace cumplir es la cantidad de ofertas activas.
+
+**Personalizado:** el comercio indica cuántas ofertas necesita y se guarda una solicitud (`solicitudes_plan`). El admin la ve en la misma pestaña, crea un plan con "Exclusivo de un negocio" y el comercio lo ve como "A tu medida" en su panel, listo para contratar como cualquier otro.
+
+**Promociones (`promociones`):** descuento % durante N meses, para todos los planes o solo algunos. La de **Lanzamiento** viene cargada (30% durante 3 meses).
+- El precio con descuento lo calcula siempre el servidor (`calcular_precio`).
+- Cada negocio usa la promo una sola vez: se cuentan sus cobros con descuento (`promo_usos`). Las fechas de la promo indican hasta cuándo se puede empezar a usar; quien ya la empezó la conserva hasta completar sus meses.
+- Si hay varias vigentes, se aplica la de mayor descuento. Los destacados no llevan promo.
+
+**Cobro todos los meses:**
+- La suscripción de Mercado Pago cobra **cada mes** solo y cada cobro aprobado extiende el plan un mes. Cancelar corta los cobros y el plan sigue hasta que venza lo pagado.
+- Con promo, la suscripción arranca con el precio con descuento; al completarse los meses de la promo el servidor sube el precio en Mercado Pago (`PUT /preapproval`) para el ciclo siguiente. Si Mercado Pago rechazara el aumento, queda registrado en los logs y se reintenta en el siguiente cobro.
+- El pago único (sin suscripción) sigue existiendo: 1 mes por pago, sin renovación automática.
+- **Hoy las suscripciones siguen siendo "modo prueba" (apagadas en producción).** Para cobrar todos los meses en producción hay que validarlas con Mercado Pago y activar `ENABLE_SUBSCRIPTIONS=true`.
+
+**Pendiente conocido:** avisos de vencimiento próximo, qué hacer con las ofertas que sobran cuando un negocio baja de plan, y hacer cumplir las características (destacados incluidos, estadísticas).

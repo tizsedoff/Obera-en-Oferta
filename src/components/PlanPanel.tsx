@@ -1,16 +1,29 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { CreditCard, Star, Loader2, RefreshCw, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { CreditCard, Star, Loader2, RefreshCw, CheckCircle, AlertCircle, Clock, Check } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 import { Offer } from '../types';
 
+interface PromoInfo {
+  nombre: string;
+  meses: number;
+  restantes: number;
+}
+
 interface Plan {
   id: string;
-  tipo: 'plan' | 'extra';
+  tipo: 'plan' | 'extra' | 'personalizado';
   nombre: string;
   descripcion: string | null;
   precio_ars: number;
+  precio_final?: number;
+  descuento_pct?: number;
+  promo?: PromoInfo | null;
   duracion_dias: number | null;
   max_ofertas_activas: number | null;
+  emoji?: string | null;
+  caracteristicas?: string[];
+  recomendado?: boolean;
+  negocio_id?: string | null;
 }
 
 interface Pago {
@@ -28,12 +41,12 @@ interface PlanStatus {
   planes: Plan[];
   pagos?: Pago[];
   pagosDisponibles: boolean;
-  // Suscripciones: TEMPORAL, solo pruebas
   suscripcionesDisponibles?: boolean;
   demoDisponible?: boolean;
   suscripcion?: { id: string; planId: string; estado: 'pendiente' | 'autorizada' | 'pausada'; conTrial: boolean; trialDias: number | null } | null;
   trialDisponible?: boolean;
   trialDias?: number;
+  solicitudPersonalizado?: { cantidadOfertas: number; creadaAt: string } | null;
 }
 
 const ESTADOS: Record<Pago['estado'], { texto: string; clase: string }> = {
@@ -59,6 +72,9 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
   const [ofertaAdestacar, setOfertaAdestacar] = useState('');
   const [payerEmail, setPayerEmail] = useState('');
   const [cancelando, setCancelando] = useState(false);
+  const [cantidadCustom, setCantidadCustom] = useState('');
+  const [mensajeCustom, setMensajeCustom] = useState('');
+  const [enviandoCustom, setEnviandoCustom] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'error' | 'info'; texto: string } | null>(null);
 
   const getToken = async () => (await supabase.auth.getSession()).data.session?.access_token || null;
@@ -85,16 +101,19 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
     cargar();
   }, [cargar]);
 
-  // Mensaje al volver de Mercado Pago (?pago=ok|error|pendiente)
+  // Mensaje al volver de Mercado Pago (?pago=ok|error|pendiente o ?suscripcion=ok)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const limpiar = () => {
+      const qs = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash);
+    };
     const susc = params.get('suscripcion');
     if (susc) {
       setAviso({ tipo: 'info', texto: 'Volviste de Mercado Pago. Si la suscripción ya quedó autorizada, tu plan se activa en unos segundos; tocá "Actualizar" para verlo.' });
       params.delete('suscripcion');
       params.delete('preapproval_id');
-      const q = params.toString();
-      window.history.replaceState({}, '', window.location.pathname + (q ? `?${q}` : '') + window.location.hash);
+      limpiar();
       return;
     }
     const pago = params.get('pago');
@@ -103,8 +122,7 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
     else if (pago === 'pendiente') setAviso({ tipo: 'info', texto: 'Tu pago está pendiente de acreditación. Cuando se apruebe, se activa solo.' });
     else setAviso({ tipo: 'error', texto: 'El pago no se completó. Podés intentarlo de nuevo cuando quieras.' });
     params.delete('pago');
-    const qs = params.toString();
-    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash);
+    limpiar();
   }, []);
 
   // Tras un pago demo se refrescan el plan y la lista de ofertas (destacadas)
@@ -185,7 +203,12 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
       const res = await fetch('/api/payments/subscription', { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'No se pudo simular el cobro.');
-      setAviso({ tipo: 'ok', texto: '🧪 Cobro del ciclo simulado: el plan se extendió. Sin cobro real.' });
+      setAviso({
+        tipo: 'ok',
+        texto: data.nuevoMonto
+          ? `🧪 Cobro del mes simulado. Terminó la promoción: desde el próximo mes se cobra ${formatoPesos(data.nuevoMonto)}.`
+          : '🧪 Cobro del mes simulado: el plan se extendió un mes. Sin cobro real.',
+      });
       await refrescarTodo();
     } catch (e: any) {
       setAviso({ tipo: 'error', texto: e.message });
@@ -213,9 +236,41 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
     }
   };
 
+  const solicitarPersonalizado = async () => {
+    setAviso(null);
+    const cantidad = parseInt(cantidadCustom, 10);
+    if (!status?.negocio || !Number.isFinite(cantidad) || cantidad < 1) {
+      setAviso({ tipo: 'error', texto: 'Indicá cuántas ofertas necesitás (un número mayor a 0).' });
+      return;
+    }
+    setEnviandoCustom(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+      if (!userId) throw new Error('Tu sesión expiró, volvé a iniciar sesión.');
+      const { error: insertError } = await supabase.from('solicitudes_plan').insert({
+        negocio_id: status.negocio.id,
+        owner_id: userId,
+        cantidad_ofertas: cantidad,
+        mensaje: mensajeCustom.trim() || null,
+      });
+      if (insertError) throw new Error('No se pudo enviar la solicitud. Probá de nuevo.');
+      setCantidadCustom('');
+      setMensajeCustom('');
+      setAviso({ tipo: 'ok', texto: '¡Solicitud enviada! Vamos a armar tu plan y te contactamos.' });
+      await cargar();
+    } catch (e: any) {
+      setAviso({ tipo: 'error', texto: e.message });
+    } finally {
+      setEnviandoCustom(false);
+    }
+  };
+
   const suscripcionActiva = status?.suscripcion || null;
   const planesPagos = (status?.planes || []).filter((p) => p.tipo === 'plan' && Number(p.precio_ars) > 0);
   const extras = (status?.planes || []).filter((p) => p.tipo === 'extra');
+  const personalizado = (status?.planes || []).find((p) => p.tipo === 'personalizado');
+  const puedePagar = !!status && (status.pagosDisponibles || status.demoDisponible);
 
   return (
     <div className="bg-white dark:bg-zinc-900 rounded-3xl border border-slate-100 dark:border-zinc-800 p-5 sm:p-6 shadow-sm space-y-5">
@@ -275,64 +330,68 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
           </div>
           {status.plan.venceAt && (
             <div>
-              <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 dark:text-zinc-500">Vence</span>
+              <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 dark:text-zinc-500">
+                {suscripcionActiva?.estado === 'autorizada' ? 'Próximo cobro / vence' : 'Vence'}
+              </span>
               <p className="font-bold text-sm text-slate-800 dark:text-zinc-200">{formatoFecha(status.plan.venceAt)}</p>
             </div>
           )}
         </div>
       )}
 
-      {status && !status.pagosDisponibles && !status.demoDisponible && (
+      {status && !puedePagar && (
         <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">Los pagos todavía no están habilitados en este entorno.</p>
       )}
 
-      {status?.negocio && (status.pagosDisponibles || status.demoDisponible) && (
+      {status?.negocio && puedePagar && (
         <>
           {status.suscripcionesDisponibles && (
             <div className="rounded-2xl border border-dashed border-slate-300 dark:border-zinc-700 p-4 space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] uppercase tracking-wider font-extrabold bg-slate-900 dark:bg-zinc-700 text-white px-2 py-0.5 rounded-full">🧪 Modo prueba</span>
-                <h4 className="font-display font-black text-sm text-slate-900 dark:text-zinc-50">Suscripción</h4>
+                <h4 className="font-display font-black text-sm text-slate-900 dark:text-zinc-50">Cobro mensual automático</h4>
               </div>
               {suscripcionActiva ? (
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-slate-600 dark:text-zinc-300">
                     {suscripcionActiva.estado === 'pendiente' && 'Pendiente de autorización en Mercado Pago.'}
                     {suscripcionActiva.estado === 'autorizada' &&
-                      `Activa${suscripcionActiva.conTrial ? ` · incluye ${suscripcionActiva.trialDias} días de prueba gratis` : ''}. Se cobra automáticamente.`}
+                      `Activa${suscripcionActiva.conTrial ? ` · incluyó ${suscripcionActiva.trialDias} días de prueba gratis` : ''}. Se cobra cada mes automáticamente.`}
                     {suscripcionActiva.estado === 'pausada' && 'Pausada en Mercado Pago.'}
                   </p>
-                  {status.demoDisponible && suscripcionActiva.estado === 'autorizada' && (
+                  <div className="flex flex-wrap gap-2">
+                    {status.demoDisponible && suscripcionActiva.estado === 'autorizada' && (
+                      <button
+                        onClick={simularCobro}
+                        disabled={cancelando}
+                        className="px-3 py-1.5 rounded-xl border border-dashed border-slate-400 dark:border-zinc-600 text-slate-700 dark:text-zinc-300 text-xs font-bold hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-60 cursor-pointer"
+                      >
+                        🧪 Simular cobro del mes
+                      </button>
+                    )}
                     <button
-                      onClick={simularCobro}
+                      onClick={cancelarSuscripcion}
                       disabled={cancelando}
-                      className="px-3 py-1.5 rounded-xl border border-dashed border-slate-400 dark:border-zinc-600 text-slate-700 dark:text-zinc-300 text-xs font-bold hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-60 cursor-pointer"
+                      className="px-3 py-1.5 rounded-xl border border-rose-300 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs font-bold hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:opacity-60 cursor-pointer"
                     >
-                      🧪 Simular cobro del ciclo
+                      {cancelando ? 'Procesando...' : 'Cancelar suscripción'}
                     </button>
-                  )}
-                  <button
-                    onClick={cancelarSuscripcion}
-                    disabled={cancelando}
-                    className="px-3 py-1.5 rounded-xl border border-rose-300 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs font-bold hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:opacity-60 cursor-pointer"
-                  >
-                    {cancelando ? 'Cancelando...' : 'Cancelar suscripción'}
-                  </button>
+                  </div>
                 </div>
               ) : (
                 <>
                   <p className="text-xs text-slate-500 dark:text-zinc-400">
-                    Cobro automático en cada plan
-                    {status.trialDisponible ? ` con ${status.trialDias} días de prueba gratis (una sola vez por negocio)` : ''}. Los destacados siguen siendo pago único.
+                    Suscribite a un plan y se cobra solo cada mes
+                    {status.trialDisponible ? `, con ${status.trialDias} días de prueba gratis (una sola vez por negocio)` : ''}. Los destacados son pago único.
                   </p>
                   {status.pagosDisponibles && (
-                  <input
-                    type="email"
-                    value={payerEmail}
-                    onChange={(e) => setPayerEmail(e.target.value)}
-                    placeholder="Email de tu cuenta de Mercado Pago (opcional)"
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-800 dark:text-zinc-100"
-                  />
+                    <input
+                      type="email"
+                      value={payerEmail}
+                      onChange={(e) => setPayerEmail(e.target.value)}
+                      placeholder="Email de tu cuenta de Mercado Pago (opcional)"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-800 dark:text-zinc-100"
+                    />
                   )}
                 </>
               )}
@@ -340,60 +399,146 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
           )}
 
           {planesPagos.length > 0 && (
-            <div className="grid sm:grid-cols-2 gap-3">
-              {planesPagos.map((plan) => (
-                <div key={plan.id} className="rounded-2xl border border-slate-200 dark:border-zinc-700 p-4 flex flex-col gap-2">
-                  <div className="flex items-baseline justify-between gap-2">
-                    <h4 className="font-display font-black text-sm text-slate-900 dark:text-zinc-50">Plan {plan.nombre}</h4>
-                    <span className="font-black text-brand-orange dark:text-indigo-400">{formatoPesos(plan.precio_ars)}</span>
+            <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {planesPagos.map((plan) => {
+                const final = plan.precio_final ?? plan.precio_ars;
+                const tieneDescuento = (plan.descuento_pct || 0) > 0 && final < plan.precio_ars;
+                const esActual = status.plan?.id === plan.id;
+                return (
+                  <div
+                    key={plan.id}
+                    className={`rounded-2xl border p-4 flex flex-col gap-3 ${
+                      plan.recomendado ? 'border-brand-orange dark:border-indigo-500 ring-1 ring-brand-orange/30 dark:ring-indigo-500/30' : 'border-slate-200 dark:border-zinc-700'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <h4 className="font-display font-black text-sm text-slate-900 dark:text-zinc-50">
+                        {plan.emoji || '📦'} Plan {plan.nombre}
+                      </h4>
+                      <div className="flex flex-col items-end gap-1">
+                        {plan.negocio_id && <span className="text-[9px] font-extrabold uppercase bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full">A tu medida</span>}
+                        {plan.recomendado && <span className="text-[9px] font-extrabold uppercase bg-brand-orange dark:bg-indigo-600 text-white px-2 py-0.5 rounded-full">Recomendado</span>}
+                        {esActual && <span className="text-[9px] font-extrabold uppercase bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full">Tu plan</span>}
+                      </div>
+                    </div>
+
+                    <div>
+                      {tieneDescuento && <span className="text-xs text-slate-400 dark:text-zinc-500 line-through mr-2">{formatoPesos(plan.precio_ars)}</span>}
+                      <span className="font-display font-black text-xl text-brand-orange dark:text-indigo-400">{formatoPesos(final)}</span>
+                      <span className="text-xs text-slate-500 dark:text-zinc-400"> / mes</span>
+                      {tieneDescuento && plan.promo && (
+                        <p className="mt-1 inline-block text-[10px] font-extrabold bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-full">
+                          🔥 {plan.promo.nombre} — {plan.descuento_pct}% OFF
+                          {plan.promo.restantes < plan.promo.meses ? ` · te quedan ${plan.promo.restantes} de ${plan.promo.meses} meses` : ` durante ${plan.promo.meses} meses`}
+                        </p>
+                      )}
+                    </div>
+
+                    {plan.descripcion && <p className="text-xs text-slate-500 dark:text-zinc-400">{plan.descripcion}</p>}
+                    {(plan.caracteristicas || []).length > 0 && (
+                      <ul className="space-y-1">
+                        {(plan.caracteristicas || []).map((c, i) => (
+                          <li key={i} className="flex items-start gap-1.5 text-xs text-slate-700 dark:text-zinc-300">
+                            <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" /> {c}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <div className="mt-auto flex flex-col gap-2">
+                      {status.pagosDisponibles && (
+                        <button
+                          onClick={() => pagar(plan)}
+                          disabled={payingId !== null}
+                          className="px-4 py-2 rounded-xl bg-brand-orange dark:bg-indigo-600 text-white text-xs font-extrabold hover:opacity-90 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          {payingId === plan.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                          {esActual ? 'Renovar 1 mes (pago único)' : 'Contratar 1 mes (pago único)'}
+                        </button>
+                      )}
+                      {status.pagosDisponibles && status.suscripcionesDisponibles && !suscripcionActiva && (
+                        <button
+                          onClick={() => suscribir(plan)}
+                          disabled={payingId !== null}
+                          className="px-4 py-2 rounded-xl border-2 border-dashed border-brand-orange dark:border-indigo-500 text-brand-orange dark:text-indigo-400 text-xs font-extrabold hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          {payingId === `sub:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                          🧪 {status.trialDisponible ? `Suscribirme: ${status.trialDias} días gratis` : 'Suscribirme (cobro mensual)'}
+                        </button>
+                      )}
+                      {status.demoDisponible && (
+                        <button
+                          onClick={() => pagar(plan, true)}
+                          disabled={payingId !== null}
+                          className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-zinc-700 text-white text-xs font-extrabold hover:opacity-90 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          {payingId === `demo:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                          🧪 Demo: simular pago de {formatoPesos(final)}
+                        </button>
+                      )}
+                      {status.demoDisponible && status.suscripcionesDisponibles && !suscripcionActiva && (
+                        <button
+                          onClick={() => suscribir(plan, true)}
+                          disabled={payingId !== null}
+                          className="px-4 py-2 rounded-xl border-2 border-dashed border-slate-400 dark:border-zinc-600 text-slate-700 dark:text-zinc-300 text-xs font-extrabold hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          {payingId === `demo-sub:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                          🧪 Demo: suscripción {status.trialDisponible ? `con ${status.trialDias} días gratis` : 'sin prueba (ya usada)'}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-zinc-400">
-                    {plan.descripcion} · hasta {plan.max_ofertas_activas} ofertas activas
-                  </p>
-                  <div className="mt-auto flex flex-col gap-2">
-                    {status.pagosDisponibles && (
-                      <button
-                        onClick={() => pagar(plan)}
-                        disabled={payingId !== null}
-                        className="px-4 py-2 rounded-xl bg-brand-orange dark:bg-indigo-600 text-white text-xs font-extrabold hover:opacity-90 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        {payingId === plan.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                        {status.plan?.id === plan.id ? 'Renovar / extender (pago único)' : 'Contratar (pago único)'}
-                      </button>
-                    )}
-                    {status.pagosDisponibles && status.suscripcionesDisponibles && !suscripcionActiva && (
-                      <button
-                        onClick={() => suscribir(plan)}
-                        disabled={payingId !== null}
-                        className="px-4 py-2 rounded-xl border-2 border-dashed border-brand-orange dark:border-indigo-500 text-brand-orange dark:text-indigo-400 text-xs font-extrabold hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        {payingId === `sub:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                        🧪 {status.trialDisponible ? `Suscribirme: ${status.trialDias} días gratis` : `Suscribirme (cada ${plan.duracion_dias} días)`}
-                      </button>
-                    )}
-                    {status.demoDisponible && (
-                      <button
-                        onClick={() => pagar(plan, true)}
-                        disabled={payingId !== null}
-                        className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-zinc-700 text-white text-xs font-extrabold hover:opacity-90 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        {payingId === `demo:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                        🧪 Demo: simular pago de {formatoPesos(plan.precio_ars)}
-                      </button>
-                    )}
-                    {status.demoDisponible && status.suscripcionesDisponibles && !suscripcionActiva && (
-                      <button
-                        onClick={() => suscribir(plan, true)}
-                        disabled={payingId !== null}
-                        className="px-4 py-2 rounded-xl border-2 border-dashed border-slate-400 dark:border-zinc-600 text-slate-700 dark:text-zinc-300 text-xs font-extrabold hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
-                      >
-                        {payingId === `demo-sub:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                        🧪 Demo: suscripción {status.trialDisponible ? `con ${status.trialDias} días gratis` : 'sin prueba (ya usada)'}
-                      </button>
-                    )}
-                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {personalizado && (
+            <div className="rounded-2xl border border-dashed border-purple-300 dark:border-purple-900/50 bg-purple-50/40 dark:bg-purple-950/10 p-4 space-y-3">
+              <h4 className="font-display font-black text-sm text-slate-900 dark:text-zinc-50">
+                {personalizado.emoji || '⚙️'} {personalizado.nombre}
+              </h4>
+              {personalizado.descripcion && <p className="text-xs text-slate-600 dark:text-zinc-300">{personalizado.descripcion}</p>}
+              {(personalizado.caracteristicas || []).length > 0 && (
+                <ul className="space-y-1">
+                  {(personalizado.caracteristicas || []).map((c, i) => (
+                    <li key={i} className="flex items-start gap-1.5 text-xs text-slate-700 dark:text-zinc-300">
+                      <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" /> {c}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {status.solicitudPersonalizado ? (
+                <p className="text-xs font-bold text-purple-700 dark:text-purple-300">
+                  ✅ Ya recibimos tu solicitud por {status.solicitudPersonalizado.cantidadOfertas} ofertas ({formatoFecha(status.solicitudPersonalizado.creadaAt)}). Te contactamos con tu plan.
+                </p>
+              ) : (
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    value={cantidadCustom}
+                    onChange={(e) => setCantidadCustom(e.target.value)}
+                    placeholder="¿Cuántas ofertas necesitás?"
+                    className="sm:w-52 px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-800 dark:text-zinc-100"
+                  />
+                  <input
+                    type="text"
+                    value={mensajeCustom}
+                    onChange={(e) => setMensajeCustom(e.target.value)}
+                    placeholder="Contanos qué necesitás (opcional)"
+                    className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-800 dark:text-zinc-100"
+                  />
+                  <button
+                    onClick={solicitarPersonalizado}
+                    disabled={enviandoCustom}
+                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-extrabold disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    {enviandoCustom ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    Armar mi plan
+                  </button>
                 </div>
-              ))}
+              )}
             </div>
           )}
 

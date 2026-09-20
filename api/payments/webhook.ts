@@ -46,11 +46,14 @@ async function aplicarPagoDeSuscripcion(supabase: any, mpToken: string, susc: an
   const pay = await r.json();
 
   if (pay.status !== "approved") return { code: 200, body: { ok: true, status: pay.status } };
-  if (!mismoMonto(pay.transaction_amount, susc.monto_ars) || pay.currency_id !== "ARS") {
+
+  // El monto puede ser el vigente, el de lista o el promocional (por si Mercado Pago tarda en subir el precio)
+  const montosValidos = [susc.monto_ars, susc.monto_lista_ars, susc.monto_promo_ars].filter((m) => m !== null && m !== undefined);
+  if (!montosValidos.some((m) => mismoMonto(pay.transaction_amount, m)) || pay.currency_id !== "ARS") {
     console.error("Cobro de suscripción con monto o moneda que no coinciden:", susc.id, pay.transaction_amount, pay.currency_id);
     return { code: 200, body: { ignored: true } };
   }
-  const { data: aplicado, error } = await supabase.rpc("aplicar_cobro_suscripcion", {
+  const { data: cobro, error } = await supabase.rpc("aplicar_cobro_suscripcion", {
     p_susc_id: susc.id,
     p_mp_payment_id: String(pay.id),
   });
@@ -58,7 +61,23 @@ async function aplicarPagoDeSuscripcion(supabase: any, mpToken: string, susc: an
     console.error("Error aplicando el cobro de la suscripción:", error);
     return { code: 500, body: { error: "No se pudo aplicar el cobro." } };
   }
-  return { code: 200, body: { ok: true, applied: !!aplicado } };
+
+  // Terminó la promoción: hay que subir el precio de la suscripción en Mercado Pago para el próximo ciclo.
+  // Si el aumento falla, el cobro siguiente llega con el precio viejo y se reintenta en ese momento.
+  if (cobro?.aplicado && susc.mp_preapproval_id && !String(susc.mp_preapproval_id).startsWith("DEMO-")) {
+    const { data: actual } = await supabase.from("suscripciones").select("monto_ars").eq("id", susc.id).maybeSingle();
+    if (actual && Number(pay.transaction_amount) < Number(actual.monto_ars) - 0.01) {
+      const put = await fetch(`https://api.mercadopago.com/preapproval/${encodeURIComponent(susc.mp_preapproval_id)}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${mpToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ auto_recurring: { transaction_amount: Number(actual.monto_ars), currency_id: "ARS" } }),
+      });
+      if (!put.ok) {
+        console.error("No se pudo subir el precio de la suscripción en Mercado Pago:", susc.id, put.status, await put.text().catch(() => ""));
+      }
+    }
+  }
+  return { code: 200, body: { ok: true, applied: !!cobro?.aplicado } };
 }
 
 // Cambio de estado de la suscripción (autorizada, pausada, cancelada)
@@ -78,7 +97,8 @@ async function procesarPreapproval(supabase: any, mpToken: string, preapprovalId
 
   const now = new Date().toISOString();
   if (pa.status === "authorized") {
-    if (!mismoMonto(pa.auto_recurring?.transaction_amount, susc.monto_ars)) {
+    const vigentes = [susc.monto_ars, susc.monto_lista_ars, susc.monto_promo_ars].filter((m: any) => m !== null && m !== undefined);
+    if (!vigentes.some((m: any) => mismoMonto(pa.auto_recurring?.transaction_amount, m))) {
       console.error("Suscripción autorizada con un monto que no coincide:", susc.id);
       return { code: 200, body: { ignored: true } };
     }

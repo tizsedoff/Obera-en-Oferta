@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, Edit, Trash2, KeyRound, Save, CheckCircle, AlertTriangle, Building, Tag, Compass, Sparkles, ExternalLink, MapPin, Map as MapIcon, Sliders, Settings, Check, RefreshCw, Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Shop, Offer, Notification, Category, MapConfig, SiteConfig } from '../types';
 import ShopLogo from './ShopLogo';
+import AdminPlanesPanel from './AdminPlanesPanel';
 import { supabase } from '../supabaseClient';
 
 interface AdminPanelProps {
@@ -80,7 +81,7 @@ export default function AdminPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
-  const [activeTab, setActiveTab] = useState<'shops' | 'offers' | 'clients' | 'categories' | 'zones' | 'map' | 'site'>('shops');
+  const [activeTab, setActiveTab] = useState<'shops' | 'offers' | 'clients' | 'categories' | 'zones' | 'map' | 'site' | 'plans'>('shops');
 
   // Estado de la pestaña de clientes/comercios (usuarios reales de Supabase Auth)
   interface AdminUser {
@@ -771,6 +772,12 @@ export default function AdminPanel({
           >
             <Sparkles className="w-4 h-4" />
             Personalizar Sitio
+          </button>
+          <button
+            onClick={() => { setActiveTab('plans'); }}
+            className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 shrink-0 ${activeTab === 'plans' ? 'bg-[#2B0E67] text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
+          >
+            💳 Planes y promos
           </button>
           </div>
           <button
@@ -1669,6 +1676,8 @@ export default function AdminPanel({
           )}
 
           {/* --- TAB SITECONFIG --- */}
+          {activeTab === 'plans' && <AdminPlanesPanel shops={shops} />}
+
           {activeTab === 'site' && (
             <div className="space-y-6 animate-fadeIn">
               <div className="p-5 sm:p-6 bg-slate-50 dark:bg-zinc-950 border border-slate-100 dark:border-zinc-800 rounded-3xl space-y-4">
