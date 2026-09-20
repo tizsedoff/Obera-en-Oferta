@@ -19,6 +19,38 @@ function toUUID(id: string, prefix: 'shop' | 'offer'): string {
   }
 }
 
+// --- Autenticación y permisos ---
+// Crear, editar y borrar ofertas exige un JWT de Supabase Auth ("Authorization: Bearer <token>").
+// Puede operar el dueño real del negocio (negocios.owner_id) o un administrador de public.admins.
+const PANEL_ROLES = ["superadmin", "admin"];
+
+async function getRequester(req: any, supabase: any): Promise<{ userId: string; isAdmin: boolean } | null> {
+  const authHeader = req.headers?.authorization || "";
+  const token = typeof authHeader === "string" && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+  if (!token || !supabase) return null;
+
+  const { data, error } = await supabase.auth.getUser(token);
+  if (error || !data?.user) return null;
+
+  const { data: row } = await supabase
+    .from("admins")
+    .select("role")
+    .eq("id", data.user.id)
+    .maybeSingle();
+
+  return { userId: data.user.id, isAdmin: !!row && PANEL_ROLES.includes(row.role) };
+}
+
+async function canManageShop(supabase: any, requester: { userId: string; isAdmin: boolean }, shopId: string): Promise<boolean> {
+  if (requester.isAdmin) return true;
+  const { data, error } = await supabase
+    .from("negocios")
+    .select("owner_id")
+    .eq("id", shopId)
+    .maybeSingle();
+  return !error && !!data && data.owner_id === requester.userId;
+}
+
 function mapDbToShop(row: any) {
   const initial = INITIAL_SHOPS.find(s => toUUID(s.id, "shop") === row.id);
   return {
@@ -180,7 +212,25 @@ export default async function handler(req: any, res: any) {
   // POST Add Offer
   if (req.method === "POST") {
     try {
-      const { shopId, shopName, title, description, originalPrice, discountPrice, category, expiryDate, hasQrCoupon, isFlashSale, image, base64Image } = req.body;
+      if (!supabase) {
+        return res.status(500).json({ error: "Configuración de Supabase faltante en el servidor." });
+      }
+      const requester = await getRequester(req, supabase);
+      if (!requester) {
+        return res.status(401).json({ error: "No autenticado." });
+      }
+
+      const { shopId, shopName, title, description, originalPrice, discountPrice, category, expiryDate, hasQrCoupon, isFlashSale, image, base64Image } = req.body || {};
+      if (!shopId) {
+        return res.status(400).json({ error: "Falta el ID del negocio." });
+      }
+      if (!title) {
+        return res.status(400).json({ error: "Falta el título de la oferta." });
+      }
+      if (!(await canManageShop(supabase, requester, toUUID(shopId, "shop")))) {
+        return res.status(403).json({ error: "No tenés permiso para publicar ofertas en este negocio." });
+      }
+
       let finalImage = image;
 
       if (base64Image && base64Image.startsWith("data:")) {
@@ -190,7 +240,7 @@ export default async function handler(req: any, res: any) {
         }
       }
 
-      const cleanShopId = toUUID(shopId || "shop-1", "shop");
+      const cleanShopId = toUUID(shopId, "shop");
       const cleanShopName = shopName || "Yerba Mate & Delicias Misioneras";
 
       const newOfferId = crypto.randomUUID();
@@ -213,12 +263,11 @@ export default async function handler(req: any, res: any) {
         usado: false,
       };
 
-      if (supabase) {
-        const dbOffer = mapOfferToDb(newOffer);
-        const { error } = await supabase.from("ofertas").insert([dbOffer]);
-        if (error) {
-          console.error("Error inserting offer into Supabase:", error);
-        }
+      const dbOffer = mapOfferToDb(newOffer);
+      const { error: insertError } = await supabase.from("ofertas").insert([dbOffer]);
+      if (insertError) {
+        console.error("Error inserting offer into Supabase:", insertError);
+        return res.status(500).json({ error: "No se pudo guardar la oferta." });
       }
 
       return res.status(200).json(newOffer);
@@ -231,9 +280,29 @@ export default async function handler(req: any, res: any) {
   // PUT Update Offer
   if (req.method === "PUT") {
     try {
+      if (!supabase) {
+        return res.status(500).json({ error: "Configuración de Supabase faltante en el servidor." });
+      }
+      const requester = await getRequester(req, supabase);
+      if (!requester) {
+        return res.status(401).json({ error: "No autenticado." });
+      }
+
       const { id, title, description, originalPrice, discountPrice, category, expiryDate, hasQrCoupon, isFlashSale, image } = req.body || {};
       if (!id) return res.status(400).json({ error: "Missing offer ID." });
       const cleanId = toUUID(id, "offer");
+
+      const { data: existing, error: existingError } = await supabase
+        .from("ofertas")
+        .select("negocio_id")
+        .eq("id", cleanId)
+        .maybeSingle();
+      if (existingError || !existing) {
+        return res.status(404).json({ error: "Oferta no encontrada." });
+      }
+      if (!(await canManageShop(supabase, requester, existing.negocio_id))) {
+        return res.status(403).json({ error: "No tenés permiso para editar esta oferta." });
+      }
       const update = {
         titulo: title || "",
         descripcion: description || "",
@@ -244,12 +313,9 @@ export default async function handler(req: any, res: any) {
         imagen_url: image || "",
         activo: true
       };
-      if (supabase) {
-        const { data, error } = await supabase.from("ofertas").update(update).eq("id", cleanId).select("*").single();
-        if (error) return res.status(500).json({ error: error.message });
-        return res.status(200).json(mapDbToOffer(data, []));
-      }
-      return res.status(200).json({ id: cleanId, ...req.body });
+      const { data, error } = await supabase.from("ofertas").update(update).eq("id", cleanId).select("*").single();
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json(mapDbToOffer(data, []));
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
     }
@@ -258,19 +324,38 @@ export default async function handler(req: any, res: any) {
   // DELETE Offer
   if (req.method === "DELETE") {
     try {
+      if (!supabase) {
+        return res.status(500).json({ error: "Configuración de Supabase faltante en el servidor." });
+      }
+      const requester = await getRequester(req, supabase);
+      if (!requester) {
+        return res.status(401).json({ error: "No autenticado." });
+      }
+
       const { id } = req.query;
       if (!id) {
         return res.status(400).json({ error: "Missing offer ID in request query." });
       }
       const cleanId = toUUID(id as string, "offer");
-      
-      if (supabase) {
-        const { error } = await supabase.from("ofertas").delete().eq("id", cleanId);
-        if (error) {
-          console.error("Error deleting offer from Supabase inside serverless handler:", error);
-        }
+
+      const { data: existing, error: existingError } = await supabase
+        .from("ofertas")
+        .select("negocio_id")
+        .eq("id", cleanId)
+        .maybeSingle();
+      if (existingError || !existing) {
+        return res.status(404).json({ error: "Oferta no encontrada." });
       }
-      
+      if (!(await canManageShop(supabase, requester, existing.negocio_id))) {
+        return res.status(403).json({ error: "No tenés permiso para eliminar esta oferta." });
+      }
+
+      const { error: deleteError } = await supabase.from("ofertas").delete().eq("id", cleanId);
+      if (deleteError) {
+        console.error("Error deleting offer from Supabase inside serverless handler:", deleteError);
+        return res.status(500).json({ error: "No se pudo eliminar la oferta." });
+      }
+
       return res.status(200).json({ success: true, message: "Oferta eliminada correctamente." });
     } catch (err: any) {
       console.error("Error deleting offer in serverless:", err);

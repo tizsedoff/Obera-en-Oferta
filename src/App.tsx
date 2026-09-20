@@ -424,9 +424,13 @@ export default function App() {
   // Add new offer via Merchant panel in database
   const handleAddOffer = async (newOfferData: Omit<Offer, 'id' | 'shopId' | 'shopName' | 'views' | 'couponsClaimed'>) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Tu sesión expiró, volvé a iniciar sesión.");
+      }
       const res = await fetch("/api/offers", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
         body: JSON.stringify({
           ...newOfferData,
           shopId: activeMerchantShop?.id || 'shop-fallback',
@@ -468,8 +472,13 @@ export default function App() {
   // Delete offer from database and memory
   const handleDeleteOffer = async (id: string) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Sesión expirada.");
+      }
       const res = await fetch(`/api/offers?id=${id}`, {
-        method: "DELETE"
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${session.access_token}` }
       });
       if (res.ok) {
         setOffers(prev => prev.filter(o => o.id !== id));

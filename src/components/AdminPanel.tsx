@@ -505,7 +505,7 @@ export default function AdminPanel({
       } : o);
       const res = await fetch('/api/offers', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ id: editingOffer.id, ...offerForm, originalPrice: Number(offerForm.originalPrice), discountPrice: Number(offerForm.discountPrice) })
       });
       if (!res.ok) throw new Error('No se pudo guardar la oferta en la base de datos.');
@@ -533,7 +533,7 @@ export default function AdminPanel({
       };
       const res = await fetch('/api/offers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ ...newOffer, shopId: parentShop.id, shopName: parentShop.name })
       });
       if (!res.ok) throw new Error('No se pudo guardar la oferta en la base de datos.');
@@ -578,7 +578,7 @@ export default function AdminPanel({
       return;
     }
     try {
-      const res = await fetch(`/api/offers?id=${offerId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/offers?id=${offerId}`, { method: 'DELETE', headers: await authHeaders() });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || 'No se pudo eliminar la oferta.');
