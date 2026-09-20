@@ -51,6 +51,29 @@ async function canManageShop(supabase: any, requester: { userId: string; isAdmin
   return !error && !!data && data.owner_id === requester.userId;
 }
 
+// Límite de ofertas activas según el plan vigente del negocio (public.planes). Los vencidos vuelven a "gratis".
+async function getPlanLimits(supabase: any, shopId: string): Promise<{ planName: string; max: number | null; active: number }> {
+  const { data: negocio } = await supabase
+    .from("negocios")
+    .select("plan_id, plan_vence_at")
+    .eq("id", shopId)
+    .maybeSingle();
+
+  const vigente = !!negocio && negocio.plan_id !== "gratis" && negocio.plan_vence_at && new Date(negocio.plan_vence_at) > new Date();
+  const planId = vigente ? negocio.plan_id : "gratis";
+  const { data: plan } = await supabase.from("planes").select("nombre, max_ofertas_activas").eq("id", planId).maybeSingle();
+
+  const hoy = new Date().toISOString().slice(0, 10);
+  const { count } = await supabase
+    .from("ofertas")
+    .select("id", { count: "exact", head: true })
+    .eq("negocio_id", shopId)
+    .eq("activo", true)
+    .or(`fecha_fin.is.null,fecha_fin.eq.,fecha_fin.gte.${hoy}`);
+
+  return { planName: plan?.nombre || planId, max: plan?.max_ofertas_activas ?? null, active: count || 0 };
+}
+
 function mapDbToShop(row: any) {
   const initial = INITIAL_SHOPS.find(s => toUUID(s.id, "shop") === row.id);
   return {
@@ -104,6 +127,7 @@ function mapDbToOffer(row: any, allShops: any[]) {
     views: 0,
     couponsClaimed: initial?.couponsClaimed || 0,
     isFlashSale: initial?.isFlashSale !== undefined ? initial.isFlashSale : false,
+    isFeatured: !!row.destacada_hasta && new Date(row.destacada_hasta) > new Date(),
     usado: initial?.usado !== undefined ? initial.usado : false
   };
 }
@@ -173,7 +197,9 @@ export default async function handler(req: any, res: any) {
         if (error) throw error;
 
         if (data && data.length > 0) {
-          const formatted = data.map((d: any) => mapDbToOffer(d, currentShops));
+          const formatted = data
+            .map((d: any) => mapDbToOffer(d, currentShops))
+            .sort((a: any, b: any) => Number(b.isFeatured) - Number(a.isFeatured));
           return res.status(200).json(formatted);
         } else {
           console.log("Supabase ofertas table is empty. Seeding INITIAL_OFFERS...");
@@ -229,6 +255,15 @@ export default async function handler(req: any, res: any) {
       }
       if (!(await canManageShop(supabase, requester, toUUID(shopId, "shop")))) {
         return res.status(403).json({ error: "No tenés permiso para publicar ofertas en este negocio." });
+      }
+      if (!requester.isAdmin) {
+        const limits = await getPlanLimits(supabase, toUUID(shopId, "shop"));
+        if (limits.max !== null && limits.active >= limits.max) {
+          return res.status(403).json({
+            code: "PLAN_LIMIT",
+            error: `Tu plan ${limits.planName} permite hasta ${limits.max} ofertas activas. Contratá un plan superior o eliminá una oferta.`,
+          });
+        }
       }
 
       let finalImage = image;

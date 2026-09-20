@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Store, Plus, TrendingUp, Users, QrCode, Trash2, CheckCircle, AlertCircle, Eye, RefreshCw, Sparkles, ChevronRight, Upload, Image, X, Camera, Keyboard, Pencil, Loader2 } from 'lucide-react';
 import { Offer, Shop } from '../types';
 import ShopLogo from './ShopLogo';
+import PlanPanel from './PlanPanel';
 
 interface MerchantDashboardProps {
   myOffers: Offer[];
@@ -290,6 +291,9 @@ export default function MerchantDashboard({ myOffers, myShop, onAddOffer, onDele
           </button>
         </div>
       </div>
+
+      {/* Plan, pagos y destacados */}
+      <PlanPanel myOffers={myOffers} />
 
       {/* Modal de edición del negocio */}
       {showEditShopModal && (

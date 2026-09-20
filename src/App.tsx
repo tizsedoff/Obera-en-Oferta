@@ -443,7 +443,8 @@ export default function App() {
       });
 
       if (!res.ok) {
-        throw new Error("Error al publicar la oferta.");
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Error al publicar la oferta.");
       }
 
       const savedOffer = await res.json();

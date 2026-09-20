@@ -375,6 +375,11 @@ export default function HomeTab({
                         <span className="bg-white/10 backdrop-blur-md text-white text-[9px] md:text-[10px] font-bold px-1.5 py-0.5 rounded-lg border border-white/10">
                           {offer.category}
                         </span>
+                        {offer.isFeatured && (
+                          <span className="bg-amber-500/90 text-zinc-950 text-[9px] md:text-[10px] font-black px-1.5 py-0.5 rounded-lg">
+                            ⭐ Destacada
+                          </span>
+                        )}
                       </div>
 
                       {/* Offer Details */}

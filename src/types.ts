@@ -38,6 +38,7 @@ export interface Offer {
   views: number;
   couponsClaimed: number;
   isFlashSale: boolean;
+  isFeatured?: boolean;
   mediaType?: 'image' | 'video';
 }
 
