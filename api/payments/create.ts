@@ -238,11 +238,8 @@ export default async function handler(req: any, res: any) {
       .update({ mp_preference_id: preference.id, updated_at: new Date().toISOString() })
       .eq("id", pago.id);
 
-    const useSandbox = mpToken.startsWith("TEST-") && preference.sandbox_init_point;
-    return res.status(200).json({
-      pagoId: pago.id,
-      init_point: useSandbox ? preference.sandbox_init_point : preference.init_point,
-    });
+    // Siempre init_point: con las credenciales de prueba actuales, sandbox_init_point suele dar el error "Oh, no, algo anduvo mal".
+    return res.status(200).json({ pagoId: pago.id, init_point: preference.init_point });
   } catch (err: any) {
     console.error("Error en /api/payments/create:", err);
     return res.status(500).json({ error: "Ocurrió un error al iniciar el pago." });
