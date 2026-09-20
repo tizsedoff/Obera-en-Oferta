@@ -259,3 +259,57 @@ grant execute on function public.es_dueno_de_negocio(uuid) to authenticated;
 drop policy if exists "solicitudes_insert_propias" on public.solicitudes_plan;
 create policy "solicitudes_insert_propias" on public.solicitudes_plan for insert to authenticated
   with check (owner_id = (select auth.uid()) and public.es_dueno_de_negocio(negocio_id));
+
+-- 10) Plan personalizado con calculadora: precio por oferta, mínimo/máximo de autoservicio y WhatsApp de contacto
+alter table public.planes
+  add column if not exists min_ofertas int check (min_ofertas is null or min_ofertas >= 1),
+  add column if not exists contacto_whatsapp text,
+  add column if not exists automatico boolean not null default false;  -- planes a medida que genera el sistema al contratar
+
+-- En la fila "personalizado": precio_ars = PRECIO POR OFERTA; max_ofertas_activas = tope de autoservicio; min_ofertas = mínimo
+update public.planes
+   set precio_ars = 660, min_ofertas = 31, max_ofertas_activas = 500, duracion_dias = 30
+ where id = 'personalizado' and tipo = 'personalizado' and precio_ars = 0;
+
+-- La promoción también aplica al personalizado (y a los planes a medida que se generan a partir de él)
+create or replace function public.calcular_precio(p_negocio uuid, p_plan text)
+returns table (o_monto numeric, o_lista numeric, o_pct numeric, o_promo_id uuid, o_promo_nombre text, o_promo_meses int, o_promo_restantes int)
+language plpgsql stable security definer set search_path to 'public'
+as $fn$
+declare
+  pl public.planes;
+  pr public.promociones;
+  u int;
+  clave text;
+begin
+  select * into pl from public.planes where id = p_plan;
+  if not found then return; end if;
+
+  o_lista := pl.precio_ars; o_monto := pl.precio_ars; o_pct := 0;
+  o_promo_id := null; o_promo_nombre := null; o_promo_meses := null; o_promo_restantes := null;
+  clave := case when pl.automatico then 'personalizado' else pl.id end;
+
+  if pl.tipo in ('plan', 'personalizado') and pl.precio_ars > 0 then
+    select p.* into pr
+      from public.promociones p
+      left join public.promo_usos pu on pu.negocio_id = p_negocio and pu.promo_id = p.id
+     where p.activo
+       and (p.aplica_a is null or clave = any (p.aplica_a))
+       and coalesce(pu.usos, 0) < p.meses
+       and (coalesce(pu.usos, 0) > 0
+            or ((p.inicio_at is null or p.inicio_at <= now()) and (p.fin_at is null or p.fin_at > now())))
+     order by p.descuento_pct desc
+     limit 1;
+    if found then
+      select usos into u from public.promo_usos where negocio_id = p_negocio and promo_usos.promo_id = pr.id;
+      o_pct := pr.descuento_pct;
+      o_monto := round(pl.precio_ars * (1 - pr.descuento_pct / 100));
+      o_promo_id := pr.id; o_promo_nombre := pr.nombre; o_promo_meses := pr.meses;
+      o_promo_restantes := pr.meses - coalesce(u, 0);
+    end if;
+  end if;
+  return next;
+end;
+$fn$;
+revoke all on function public.calcular_precio(uuid, text) from public, anon, authenticated;
+grant execute on function public.calcular_precio(uuid, text) to service_role;

@@ -24,6 +24,8 @@ interface Plan {
   caracteristicas?: string[];
   recomendado?: boolean;
   negocio_id?: string | null;
+  min_ofertas?: number | null;
+  contacto_whatsapp?: string | null;
 }
 
 interface Pago {
@@ -137,6 +139,10 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
       setAviso({ tipo: 'error', texto: 'Elegí primero qué oferta querés destacar.' });
       return;
     }
+    if (plan.tipo === 'personalizado' && !cantidadValida) {
+      setAviso({ tipo: 'error', texto: `Elegí entre ${minCustom} y ${maxCustom} ofertas para calcular tu plan.` });
+      return;
+    }
     setPayingId(demo ? `demo:${plan.id}` : plan.id);
     try {
       const token = await getToken();
@@ -144,7 +150,7 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
       const res = await fetch('/api/payments/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planId: plan.id, ofertaId: plan.tipo === 'extra' ? ofertaAdestacar : undefined, demo: demo || undefined }),
+        body: JSON.stringify({ planId: plan.id, ofertaId: plan.tipo === 'extra' ? ofertaAdestacar : undefined, cantidad: plan.tipo === 'personalizado' ? cantidadNum : undefined, demo: demo || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'No se pudo iniciar el pago.');
@@ -164,6 +170,10 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
 
   const suscribir = async (plan: Plan, demo = false) => {
     setAviso(null);
+    if (plan.tipo === 'personalizado' && !cantidadValida) {
+      setAviso({ tipo: 'error', texto: `Elegí entre ${minCustom} y ${maxCustom} ofertas para calcular tu plan.` });
+      return;
+    }
     setPayingId(demo ? `demo-sub:${plan.id}` : `sub:${plan.id}`);
     try {
       const token = await getToken();
@@ -171,7 +181,7 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
       const res = await fetch('/api/payments/subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planId: plan.id, payerEmail: payerEmail.trim() || undefined, demo: demo || undefined }),
+        body: JSON.stringify({ planId: plan.id, payerEmail: payerEmail.trim() || undefined, cantidad: plan.tipo === 'personalizado' ? cantidadNum : undefined, demo: demo || undefined }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'No se pudo crear la suscripción.');
@@ -257,7 +267,7 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
       if (insertError) throw new Error('No se pudo enviar la solicitud. Probá de nuevo.');
       setCantidadCustom('');
       setMensajeCustom('');
-      setAviso({ tipo: 'ok', texto: '¡Solicitud enviada! Vamos a armar tu plan y te contactamos.' });
+      setAviso({ tipo: 'ok', texto: '¡Consulta enviada! Te contactamos para armar tu plan.' });
       await cargar();
     } catch (e: any) {
       setAviso({ tipo: 'error', texto: e.message });
@@ -270,6 +280,26 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
   const planesPagos = (status?.planes || []).filter((p) => p.tipo === 'plan' && Number(p.precio_ars) > 0);
   const extras = (status?.planes || []).filter((p) => p.tipo === 'extra');
   const personalizado = (status?.planes || []).find((p) => p.tipo === 'personalizado');
+
+  // Calculadora del plan personalizado: el precio de esta fila es POR OFERTA
+  const porOferta = personalizado ? Number(personalizado.precio_ars) : 0;
+  const minCustom = personalizado?.min_ofertas || 1;
+  const maxCustom = personalizado?.max_ofertas_activas || 500;
+  const cantidadNum = parseInt(cantidadCustom, 10);
+  const hayCantidad = Number.isFinite(cantidadNum) && cantidadNum >= 1;
+  const cantidadValida = !!personalizado && porOferta > 0 && hayCantidad && cantidadNum >= minCustom && cantidadNum <= maxCustom;
+  const pctCustom = personalizado?.descuento_pct || 0;
+  const totalLista = cantidadValida ? Math.round(cantidadNum * porOferta) : 0;
+  const totalFinal = totalLista > 0 && pctCustom > 0 ? Math.round(totalLista * (1 - pctCustom / 100)) : totalLista;
+  const sugerido =
+    hayCantidad && cantidadNum < minCustom
+      ? [...planesPagos].sort((a, b) => (a.precio_final ?? a.precio_ars) - (b.precio_final ?? b.precio_ars)).find((p) => (p.max_ofertas_activas || 0) >= cantidadNum)
+      : null;
+  const whatsappCustom = personalizado?.contacto_whatsapp
+    ? `https://wa.me/${personalizado.contacto_whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent(
+        `¡Hola! Quiero un plan personalizado para mi negocio "${status?.negocio?.nombre || ''}" en Obera en Oferta${hayCantidad ? `: necesito ${cantidadNum} ofertas activas` : ''}${cantidadValida ? ` (calculé ${formatoPesos(totalLista)} por mes)` : ''}.`
+      )}`
+    : null;
   const puedePagar = !!status && (status.pagosDisponibles || status.demoDisponible);
 
   return (
@@ -495,9 +525,17 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
 
           {personalizado && (
             <div className="rounded-2xl border border-dashed border-purple-300 dark:border-purple-900/50 bg-purple-50/40 dark:bg-purple-950/10 p-4 space-y-3">
-              <h4 className="font-display font-black text-sm text-slate-900 dark:text-zinc-50">
-                {personalizado.emoji || '⚙️'} {personalizado.nombre}
-              </h4>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h4 className="font-display font-black text-sm text-slate-900 dark:text-zinc-50">
+                  {personalizado.emoji || '⚙️'} Plan {personalizado.nombre}
+                </h4>
+                {porOferta > 0 && (
+                  <span className="text-xs text-slate-600 dark:text-zinc-300">
+                    {pctCustom > 0 && <span className="line-through text-slate-400 dark:text-zinc-500 mr-1">{formatoPesos(porOferta)}</span>}
+                    <strong>{formatoPesos(pctCustom > 0 ? Math.round(porOferta * (1 - pctCustom / 100)) : porOferta)}</strong> por oferta / mes
+                  </span>
+                )}
+              </div>
               {personalizado.descripcion && <p className="text-xs text-slate-600 dark:text-zinc-300">{personalizado.descripcion}</p>}
               {(personalizado.caracteristicas || []).length > 0 && (
                 <ul className="space-y-1">
@@ -508,20 +546,110 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
                   ))}
                 </ul>
               )}
-              {status.solicitudPersonalizado ? (
+
+              {status.solicitudPersonalizado && (
                 <p className="text-xs font-bold text-purple-700 dark:text-purple-300">
-                  ✅ Ya recibimos tu solicitud por {status.solicitudPersonalizado.cantidadOfertas} ofertas ({formatoFecha(status.solicitudPersonalizado.creadaAt)}). Te contactamos con tu plan.
+                  ✅ Ya recibimos tu consulta por {status.solicitudPersonalizado.cantidadOfertas} ofertas ({formatoFecha(status.solicitudPersonalizado.creadaAt)}). Te contactamos.
                 </p>
-              ) : (
-                <div className="flex flex-col sm:flex-row gap-2">
+              )}
+
+              <div className="grid sm:grid-cols-[13rem_1fr] gap-3 items-start">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider font-extrabold text-slate-400 dark:text-zinc-500 mb-1">¿Cuántas ofertas necesitás?</label>
                   <input
                     type="number"
                     min={1}
                     value={cantidadCustom}
                     onChange={(e) => setCantidadCustom(e.target.value)}
-                    placeholder="¿Cuántas ofertas necesitás?"
-                    className="sm:w-52 px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-800 dark:text-zinc-100"
+                    placeholder={`Ej: ${minCustom}`}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm font-bold text-slate-800 dark:text-zinc-100"
                   />
+                  <p className="mt-1 text-[10px] text-slate-500 dark:text-zinc-400">Contratación directa entre {minCustom} y {maxCustom} ofertas.</p>
+                </div>
+
+                <div className="rounded-xl bg-white dark:bg-zinc-900 border border-purple-200 dark:border-purple-900/40 p-3 min-h-[76px] flex flex-col justify-center">
+                  {cantidadValida ? (
+                    <>
+                      <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                        {cantidadNum} ofertas × {formatoPesos(porOferta)} = {formatoPesos(totalLista)} / mes
+                      </p>
+                      <p className="font-display font-black text-xl text-purple-700 dark:text-purple-300">
+                        {formatoPesos(totalFinal)} <span className="text-xs font-bold text-slate-500 dark:text-zinc-400">/ mes</span>
+                      </p>
+                      {pctCustom > 0 && personalizado.promo && (
+                        <p className="text-[10px] font-extrabold text-rose-600 dark:text-rose-400">
+                          🔥 {personalizado.promo.nombre} — {pctCustom}% OFF
+                          {personalizado.promo.restantes < personalizado.promo.meses ? ` · te quedan ${personalizado.promo.restantes} de ${personalizado.promo.meses} meses` : ` durante ${personalizado.promo.meses} meses`}
+                        </p>
+                      )}
+                    </>
+                  ) : !hayCantidad ? (
+                    <p className="text-xs text-slate-500 dark:text-zinc-400">Escribí cuántas ofertas necesitás y te mostramos el precio al instante.</p>
+                  ) : cantidadNum < minCustom ? (
+                    <p className="text-xs text-slate-600 dark:text-zinc-300">
+                      Para menos de {minCustom} ofertas conviene un plan fijo
+                      {sugerido ? (
+                        <>
+                          : el <strong>Plan {sugerido.nombre}</strong> incluye hasta {sugerido.max_ofertas_activas} ofertas por {formatoPesos(sugerido.precio_final ?? sugerido.precio_ars)} / mes.
+                        </>
+                      ) : (
+                        '.'
+                      )}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-600 dark:text-zinc-300">Para más de {maxCustom} ofertas armamos el plan con vos: usá "Consultar".</p>
+                  )}
+                </div>
+              </div>
+
+              {cantidadValida && (
+                <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+                  {status.pagosDisponibles && (
+                    <button
+                      onClick={() => pagar(personalizado)}
+                      disabled={payingId !== null}
+                      className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-extrabold disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {payingId === personalizado.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      Contratar 1 mes (pago único)
+                    </button>
+                  )}
+                  {status.pagosDisponibles && status.suscripcionesDisponibles && !suscripcionActiva && (
+                    <button
+                      onClick={() => suscribir(personalizado)}
+                      disabled={payingId !== null}
+                      className="px-4 py-2 rounded-xl border-2 border-dashed border-purple-500 text-purple-700 dark:text-purple-300 text-xs font-extrabold hover:bg-purple-50 dark:hover:bg-purple-950/30 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {payingId === `sub:${personalizado.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      🧪 {status.trialDisponible ? `Suscribirme: ${status.trialDias} días gratis` : 'Suscribirme (cobro mensual)'}
+                    </button>
+                  )}
+                  {status.demoDisponible && (
+                    <button
+                      onClick={() => pagar(personalizado, true)}
+                      disabled={payingId !== null}
+                      className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-zinc-700 text-white text-xs font-extrabold hover:opacity-90 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {payingId === `demo:${personalizado.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      🧪 Demo: simular pago de {formatoPesos(totalFinal)}
+                    </button>
+                  )}
+                  {status.demoDisponible && status.suscripcionesDisponibles && !suscripcionActiva && (
+                    <button
+                      onClick={() => suscribir(personalizado, true)}
+                      disabled={payingId !== null}
+                      className="px-4 py-2 rounded-xl border-2 border-dashed border-slate-400 dark:border-zinc-600 text-slate-700 dark:text-zinc-300 text-xs font-extrabold hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {payingId === `demo-sub:${personalizado.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      🧪 Demo: suscripción {status.trialDisponible ? `con ${status.trialDias} días gratis` : 'sin prueba (ya usada)'}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="border-t border-purple-200/70 dark:border-purple-900/30 pt-3 space-y-2">
+                <p className="text-[11px] font-bold text-slate-600 dark:text-zinc-300">¿Necesitás otra cantidad o algo distinto? Consultanos:</p>
+                <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="text"
                     value={mensajeCustom}
@@ -532,13 +660,23 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
                   <button
                     onClick={solicitarPersonalizado}
                     disabled={enviandoCustom}
-                    className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-extrabold disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                    className="px-4 py-2 rounded-xl bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 text-xs font-extrabold hover:bg-purple-200 dark:hover:bg-purple-950/60 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
                   >
                     {enviandoCustom ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    Armar mi plan
+                    Enviar consulta{hayCantidad ? ` por ${cantidadNum} ofertas` : ''}
                   </button>
+                  {whatsappCustom && (
+                    <a
+                      href={whatsappCustom}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-extrabold flex items-center justify-center gap-2"
+                    >
+                      💬 Escribir por WhatsApp
+                    </a>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           )}
 

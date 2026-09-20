@@ -20,6 +20,9 @@ interface PlanRow {
   caracteristicas: string[];
   recomendado: boolean;
   negocio_id: string | null;
+  min_ofertas: number | null;
+  contacto_whatsapp: string | null;
+  automatico: boolean;
 }
 
 interface PromoRow {
@@ -61,6 +64,7 @@ function PlanEditor({ plan, shops, onSave, isNew }: { plan: PlanRow; shops: Shop
     dias: plan.duracion_dias === null ? '' : String(plan.duracion_dias),
     max: plan.max_ofertas_activas === null ? '' : String(plan.max_ofertas_activas),
     ord: String(plan.orden ?? 0),
+    min: plan.min_ofertas === null || plan.min_ofertas === undefined ? '' : String(plan.min_ofertas),
   });
   const [saving, setSaving] = useState(false);
 
@@ -80,6 +84,9 @@ function PlanEditor({ plan, shops, onSave, isNew }: { plan: PlanRow; shops: Shop
       caracteristicas: d.caracteristicasTxt.split('\n').map((l) => l.trim()).filter(Boolean),
       recomendado: d.recomendado,
       negocio_id: d.negocio_id || null,
+      min_ofertas: numOrNull(d.min),
+      contacto_whatsapp: d.contacto_whatsapp?.replace(/[^0-9]/g, '') || null,
+      automatico: d.automatico || false,
     });
     setSaving(false);
   };
@@ -110,7 +117,7 @@ function PlanEditor({ plan, shops, onSave, isNew }: { plan: PlanRow; shops: Shop
           )}
         </div>
         <div className="col-span-6 sm:col-span-2">
-          <label className={labelCls}>Precio (ARS)</label>
+          <label className={labelCls}>{d.tipo === 'personalizado' ? 'Precio por oferta (ARS)' : 'Precio (ARS)'}</label>
           <input type="number" min={0} className={inputCls} value={d.precio} onChange={(e) => setD({ ...d, precio: e.target.value })} />
         </div>
         <div className="col-span-6 sm:col-span-1">
@@ -118,7 +125,7 @@ function PlanEditor({ plan, shops, onSave, isNew }: { plan: PlanRow; shops: Shop
           <input type="number" min={1} className={inputCls} value={d.dias} onChange={(e) => setD({ ...d, dias: e.target.value })} />
         </div>
         <div className="col-span-6 sm:col-span-1">
-          <label className={labelCls}>Ofertas</label>
+          <label className={labelCls}>{d.tipo === 'personalizado' ? 'Máx. ofertas' : 'Ofertas'}</label>
           <input type="number" min={0} className={inputCls} value={d.max} onChange={(e) => setD({ ...d, max: e.target.value })} />
         </div>
       </div>
@@ -133,6 +140,22 @@ function PlanEditor({ plan, shops, onSave, isNew }: { plan: PlanRow; shops: Shop
           <textarea rows={3} className={inputCls} value={d.caracteristicasTxt} onChange={(e) => setD({ ...d, caracteristicasTxt: e.target.value })} />
         </div>
       </div>
+
+      {d.tipo === 'personalizado' && (
+        <div className="grid sm:grid-cols-3 gap-3 rounded-xl bg-purple-50/60 dark:bg-purple-950/10 border border-purple-200 dark:border-purple-900/40 p-3">
+          <div>
+            <label className={labelCls}>Mínimo de ofertas (calculadora)</label>
+            <input type="number" min={1} className={inputCls} value={d.min} onChange={(e) => setD({ ...d, min: e.target.value })} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelCls}>WhatsApp de contacto (con código de país, ej: 5493755123456)</label>
+            <input className={inputCls} value={d.contacto_whatsapp || ''} onChange={(e) => setD({ ...d, contacto_whatsapp: e.target.value })} placeholder="Vacío = no se muestra el botón de WhatsApp" />
+          </div>
+          <p className="sm:col-span-3 text-[11px] text-slate-600 dark:text-zinc-300">
+            La calculadora del comercio multiplica la cantidad de ofertas por el precio por oferta. Entre el mínimo y el máximo pueden contratar directo; fuera de ese rango se les ofrece "Consultar".
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-wrap items-end gap-4">
         <div className="w-24">
@@ -292,6 +315,7 @@ export default function AdminPlanesPanel({ shops }: { shops: Shop[] }) {
   const [msg, setMsg] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null);
   const [creandoPlan, setCreandoPlan] = useState(false);
   const [creandoPromo, setCreandoPromo] = useState(false);
+  const [verAutomaticos, setVerAutomaticos] = useState(false);
 
   const cargar = useCallback(async () => {
     setLoading(true);
@@ -356,9 +380,11 @@ export default function AdminPlanesPanel({ shops }: { shops: Shop[] }) {
   const planNuevo: PlanRow = {
     id: '', tipo: 'plan', nombre: '', descripcion: '', precio_ars: 0, duracion_dias: 30, max_ofertas_activas: 10,
     activo: true, orden: planes.length + 1, emoji: '🟠', caracteristicas: [], recomendado: false, negocio_id: null,
+    min_ofertas: null, contacto_whatsapp: null, automatico: false,
   };
   const promoNueva: PromoRow = { id: '', nombre: '', descripcion: '', descuento_pct: 20, meses: 3, aplica_a: null, activo: true, inicio_at: null, fin_at: null };
-  const planesPagos = planes.filter((p) => p.tipo === 'plan' && p.precio_ars > 0);
+  const planesPagos = planes.filter((p) => (p.tipo === 'plan' || p.tipo === 'personalizado') && p.precio_ars > 0 && !p.automatico);
+  const automaticos = planes.filter((p) => p.automatico);
   const nombreNegocio = (id: string) => shops.find((s) => s.id === id)?.name || id.slice(0, 8);
   const pendientes = solicitudes.filter((s) => s.estado === 'pendiente').length;
 
@@ -388,11 +414,27 @@ export default function AdminPlanesPanel({ shops }: { shops: Shop[] }) {
           </button>
         </div>
         {creandoPlan && <PlanEditor plan={planNuevo} shops={shops} isNew onSave={(p) => guardarPlan(p, true)} />}
-        {planes.map((p) => (
+        {planes.filter((p) => !p.automatico).map((p) => (
           <React.Fragment key={`${p.id}-${JSON.stringify(p)}`}>
             <PlanEditor plan={p} shops={shops} onSave={(x) => guardarPlan(x)} />
           </React.Fragment>
         ))}
+        {automaticos.length > 0 && (
+          <div className="space-y-2">
+            <button onClick={() => setVerAutomaticos(!verAutomaticos)} className="text-xs font-bold text-slate-600 dark:text-zinc-300 underline cursor-pointer">
+              {verAutomaticos ? 'Ocultar' : 'Ver'} {automaticos.length} planes personalizados contratados (generados por el sistema)
+            </button>
+            {verAutomaticos && (
+              <div className="space-y-1">
+                {automaticos.map((p) => (
+                  <p key={p.id} className="text-xs text-slate-600 dark:text-zinc-300">
+                    {p.nombre} · {nombreNegocio(p.negocio_id || '')} · ${Number(p.precio_ars).toLocaleString('es-AR')}/mes · {p.max_ofertas_activas} ofertas
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <p className="text-[11px] text-slate-500 dark:text-zinc-400">
           Los planes no se borran para no perder el historial de pagos: desactivalos con "Activo". Un plan "Exclusivo" solo lo ve y lo puede contratar ese negocio (así se arma un plan personalizado).
         </p>

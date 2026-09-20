@@ -81,6 +81,7 @@ export default function AdminPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
+  const [solicitudesPendientes, setSolicitudesPendientes] = useState(0);
   const [activeTab, setActiveTab] = useState<'shops' | 'offers' | 'clients' | 'categories' | 'zones' | 'map' | 'site' | 'plans'>('shops');
 
   // Estado de la pestaña de clientes/comercios (usuarios reales de Supabase Auth)
@@ -124,6 +125,16 @@ export default function AdminPanel({
       setUsersLoading(false);
     }
   };
+
+  // Consultas de plan personalizado sin atender (aviso en la pestaña)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    supabase
+      .from('solicitudes_plan')
+      .select('id', { count: 'exact', head: true })
+      .eq('estado', 'pendiente')
+      .then(({ count }) => setSolicitudesPendientes(count || 0));
+  }, [isAuthenticated, activeTab]);
 
   useEffect(() => {
     if (activeTab === 'clients' && isAuthenticated) {
@@ -778,6 +789,9 @@ export default function AdminPanel({
             className={`px-4 py-2 rounded-xl font-bold text-xs transition-colors flex items-center gap-2 shrink-0 ${activeTab === 'plans' ? 'bg-[#2B0E67] text-white' : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
           >
             💳 Planes y promos
+            {solicitudesPendientes > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold">{solicitudesPendientes}</span>
+            )}
           </button>
           </div>
           <button

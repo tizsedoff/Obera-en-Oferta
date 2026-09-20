@@ -89,3 +89,16 @@ Para probar todo el flujo sin cuenta de Mercado Pago: en "Mi plan y pagos" apare
 - **Hoy las suscripciones siguen siendo "modo prueba" (apagadas en producción).** Para cobrar todos los meses en producción hay que validarlas con Mercado Pago y activar `ENABLE_SUBSCRIPTIONS=true`.
 
 **Pendiente conocido:** avisos de vencimiento próximo, qué hacer con las ofertas que sobran cuando un negocio baja de plan, y hacer cumplir las características (destacados incluidos, estadísticas).
+
+---
+
+## Plan personalizado con calculadora
+En el panel del comercio, la tarjeta **Personalizado** tiene una calculadora: cantidad de ofertas × precio por oferta (hoy **$660**), con la promo aplicada. Entre el **mínimo** (31 por defecto) y el **máximo** (500) se contrata directo: pago único, suscripción o demo, igual que los demás planes. Al contratar, el servidor genera un plan a medida exclusivo de ese negocio (`custom_<negocio>_<cantidad>_<precio>`, con `automatico = true`) que guarda el precio y el límite de ofertas de ese momento; si después cambiás el precio por oferta, los planes ya contratados no se modifican.
+
+Fuera de ese rango, o para pedidos especiales, el comercio usa **"Enviar consulta"** (queda en la pestaña Planes y promos, con aviso numérico en la pestaña) y, si cargás un número, **"Escribir por WhatsApp"** con el mensaje ya armado (negocio, cantidad y precio calculado).
+
+Todo se edita en el admin → Planes y promos → tarjeta "Personalizado":
+- **Precio por oferta** (en el campo "Precio"), **mínimo**, **máximo** y **WhatsApp de contacto** (con código de país, sin +; vacío = no se muestra el botón).
+- Para que una promo aplique al personalizado, no marques planes (aplica a todos) o marcá "Personalizado".
+
+Los planes personalizados contratados no aparecen en la lista de planes: se ven con "Ver N planes personalizados contratados".

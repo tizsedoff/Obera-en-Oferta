@@ -57,7 +57,7 @@ export default async function handler(req: any, res: any) {
     const { data: userData, error: userError } = await supabase.auth.getUser(token);
     if (userError || !userData?.user) return res.status(401).json({ error: "Sesión inválida o expirada." });
 
-    const columnasPlan = "id, tipo, nombre, descripcion, precio_ars, duracion_dias, max_ofertas_activas, emoji, caracteristicas, recomendado, negocio_id";
+    const columnasPlan = "id, tipo, nombre, descripcion, precio_ars, duracion_dias, max_ofertas_activas, emoji, caracteristicas, recomendado, negocio_id, min_ofertas, contacto_whatsapp";
     const pagosDisponibles = process.env.MP_ACCESS_TOKEN ? true : false;
     const suscripcionesDisponibles = suscripcionesHabilitadas();
     const demoDisponible = demoHabilitado();
@@ -71,7 +71,7 @@ export default async function handler(req: any, res: any) {
     if (negocioError) return res.status(500).json({ error: "No se pudo leer tu negocio." });
     if (!negocio) {
       const { data: planesPublicos } = await supabase
-        .from("planes").select(columnasPlan).eq("activo", true).is("negocio_id", null).order("orden", { ascending: true });
+        .from("planes").select(columnasPlan).eq("activo", true).eq("automatico", false).is("negocio_id", null).order("orden", { ascending: true });
       return res.status(200).json({ negocio: null, planes: planesPublicos || [], pagosDisponibles, suscripcionesDisponibles, demoDisponible });
     }
 
@@ -80,6 +80,7 @@ export default async function handler(req: any, res: any) {
       .from("planes")
       .select(columnasPlan)
       .eq("activo", true)
+      .eq("automatico", false)
       .or(`negocio_id.is.null,negocio_id.eq.${negocio.id}`)
       .order("orden", { ascending: true });
     const { data: preciosRaw } = await supabase.rpc("precios_negocio", { p_negocio: negocio.id });

@@ -12,6 +12,44 @@ import crypto from "crypto";
 
 const TRIAL_DIAS = Math.max(1, Number(process.env.SUBSCRIPTION_TRIAL_DAYS) || 15);
 
+// Plan personalizado (calculadora): el precio de la fila "personalizado" es POR OFERTA. Al contratar se genera (una sola vez)
+// un plan a medida exclusivo del negocio con la cantidad elegida; después el flujo es el mismo que cualquier otro plan.
+async function resolverPlanPersonalizado(supabase: any, base: any, negocio: any, cantidad: unknown): Promise<{ plan?: any; error?: string }> {
+  const n = Math.floor(Number(cantidad));
+  const min = Number(base.min_ofertas) || 1;
+  const max = Number(base.max_ofertas_activas) || 500;
+  const porOferta = Number(base.precio_ars);
+  if (!(porOferta > 0)) return { error: "El plan personalizado no está disponible por ahora." };
+  if (!Number.isFinite(n) || n < min || n > max) {
+    return { error: `Elegí entre ${min} y ${max} ofertas. Para otra cantidad, escribinos desde "Consultar".` };
+  }
+  const id = `custom_${String(negocio.id).slice(0, 8)}_${n}_${Math.round(porOferta)}`;
+  const fila = {
+    id,
+    tipo: "plan",
+    nombre: `Personalizado (${n} ofertas)`,
+    descripcion: `Plan a medida: ${n} ofertas activas`,
+    precio_ars: Math.round(n * porOferta),
+    duracion_dias: Number(base.duracion_dias) || 30,
+    max_ofertas_activas: n,
+    activo: true,
+    orden: 99,
+    emoji: base.emoji || "⚙️",
+    caracteristicas: [],
+    recomendado: false,
+    negocio_id: negocio.id,
+    automatico: true,
+  };
+  const { error: upsertError } = await supabase.from("planes").upsert(fila, { onConflict: "id", ignoreDuplicates: true });
+  if (upsertError) {
+    console.error("No se pudo generar el plan personalizado:", upsertError);
+    return { error: "No se pudo armar tu plan personalizado." };
+  }
+  const { data } = await supabase.from("planes").select("*").eq("id", id).maybeSingle();
+  if (!data || data.negocio_id !== negocio.id) return { error: "No se pudo armar tu plan personalizado." };
+  return { plan: data };
+}
+
 function suscripcionesHabilitadas(): boolean {
   return process.env.VERCEL_ENV !== "production" || process.env.ENABLE_SUBSCRIPTIONS === "true";
 }
@@ -120,9 +158,14 @@ export default async function handler(req: any, res: any) {
     if (!demo && !mpToken) return res.status(503).json({ error: "Los pagos todavía no están configurados." });
     if (typeof planId !== "string" || !planId) return res.status(400).json({ error: "Falta el plan." });
 
-    const { data: plan } = await supabase.from("planes").select("*").eq("id", planId).eq("activo", true).maybeSingle();
-    if (!plan || plan.tipo !== "plan" || Number(plan.precio_ars) <= 0) {
+    let { data: plan } = await supabase.from("planes").select("*").eq("id", planId).eq("activo", true).maybeSingle();
+    if (!plan || (plan.tipo !== "plan" && plan.tipo !== "personalizado") || Number(plan.precio_ars) <= 0) {
       return res.status(400).json({ error: "Ese plan no admite suscripción." });
+    }
+    if (plan.tipo === "personalizado") {
+      const r = await resolverPlanPersonalizado(supabase, plan, negocio, req.body?.cantidad);
+      if (!r.plan) return res.status(400).json({ error: r.error || "No se pudo armar tu plan personalizado." });
+      plan = r.plan;
     }
     if (plan.negocio_id && plan.negocio_id !== negocio.id) {
       return res.status(403).json({ error: "Ese plan no está disponible para tu negocio." });
