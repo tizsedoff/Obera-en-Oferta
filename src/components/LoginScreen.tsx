@@ -215,7 +215,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
 
       if (profile.rol !== role) {
         setError(`Esta cuenta está registrada como ${profile.rol === 'customer' ? 'Cliente' : profile.rol === 'merchant' ? 'Comercio' : profile.rol}. Seleccioná la pestaña de rol correcta.`);
-        await supabase.auth.signOut();
+        await supabase.auth.signOut({ scope: 'local' });
         return;
       }
 

@@ -172,7 +172,7 @@ export default function App() {
 
   const handleLogout = async () => {
     if (userRole !== 'visitor') {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: 'local' });
     }
     setUserRole(null);
     setUserEmail('');

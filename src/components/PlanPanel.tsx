@@ -70,6 +70,7 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
       if (!token) throw new Error('Tu sesión expiró, volvé a iniciar sesión.');
       const res = await fetch('/api/payments/status', { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 401) throw new Error('Tu sesión se cerró (por ejemplo, al salir desde otra pestaña). Cerrá sesión y volvé a entrar.');
       if (!res.ok) throw new Error(data.error || 'No se pudo cargar tu plan.');
       setStatus(data);
     } catch (e: any) {
