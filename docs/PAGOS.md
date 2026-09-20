@@ -31,3 +31,26 @@ Los precios que trae la migración son de ejemplo.
 - Reembolsos: el pago se marca `reembolsado`, pero retirar el plan o el destacado es manual por ahora.
 - Un segundo pago aprobado para el mismo pedido no se aplica dos veces; queda un aviso en los logs para reembolsarlo.
 - Para producción hay que aplicar `docs/sql/2026-09-20-pagos-negocios.sql` en la base de producción antes de mergear a `main`.
+
+---
+
+## Suscripciones (TEMPORAL, solo pruebas)
+Cobro automático cada `duracion_dias` del plan, con **15 días de prueba gratis** (una sola vez por negocio). Aplica a todos los planes de tipo `plan` con precio (hoy: Pro); los destacados siguen siendo pago único.
+
+**Está apagada en producción.** Se activa sola fuera de producción (Preview/staging); en producción solo con `ENABLE_SUBSCRIPTIONS=true`.
+
+| Variable | Para qué |
+|---|---|
+| `SUBSCRIPTION_TRIAL_DAYS` | Opcional. Días de prueba (15 por defecto). Poné `1` para probar el primer cobro rápido. |
+| `ENABLE_SUBSCRIPTIONS` | Solo si algún día se quiere encender en producción. |
+
+**Cómo funciona:** al suscribirse se crea la suscripción en Mercado Pago (`/preapproval`). Cuando queda *autorizada* el negocio recibe el plan por los días de prueba; cada cobro aprobado extiende el plan otros `duracion_dias`. Si se cancela o falla el cobro, el plan sigue hasta que venza lo ya otorgado. Cancelar se hace desde "Mi plan y pagos".
+
+**Configuración necesaria en Mercado Pago (Webhooks de la integración):** además de *Pagos*, activar los eventos **Planes y suscripciones** y **Pagos recurrentes de suscripción**. La URL de notificación de las suscripciones es la del panel de la integración (no la de cada preferencia). En staging debe incluir el bypass de Vercel:
+`https://<url-de-staging>/api/payments/webhook?x-vercel-protection-bypass=<secreto>`
+
+**Probar:** con un usuario de prueba de Mercado Pago cuyo email coincida con el que se ingresa en "Email de tu cuenta de Mercado Pago". Verificar en `public.suscripciones` (`estado = autorizada`), en `negocios.plan_vence_at` y, al llegar el primer cobro, una fila nueva en `public.pagos`.
+
+**Para sacarla:** borrar `api/payments/subscription.ts`, los bloques "suscripciones" de `status.ts` y `webhook.ts`, el bloque de suscripción de `PlanPanel.tsx` y el SQL `2026-09-20-suscripciones-prueba.sql`.
+
+**A confirmar en la primera prueba:** que Mercado Pago acepte `free_trial` al crear la suscripción sin plan asociado (si lo rechaza, la app muestra un error y no crea nada).

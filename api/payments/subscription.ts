@@ -1,0 +1,175 @@
+import { createClient } from "@supabase/supabase-js";
+
+// TEMPORAL - SOLO PARA PRUEBAS.
+// POST   /api/payments/subscription  { planId, payerEmail? }  -> crea una suscripción en Mercado Pago (con prueba gratuita si el negocio no la usó)
+// DELETE /api/payments/subscription                            -> cancela la suscripción del negocio (el plan sigue hasta que venza lo ya pagado)
+//
+// Solo está activa fuera de producción, o en producción si ENABLE_SUBSCRIPTIONS=true.
+// Para sacarla: borrar este archivo, el bloque "suscripciones" de status.ts/webhook.ts y el botón en PlanPanel.tsx.
+
+const TRIAL_DIAS = Math.max(1, Number(process.env.SUBSCRIPTION_TRIAL_DAYS) || 15);
+
+function suscripcionesHabilitadas(): boolean {
+  return process.env.VERCEL_ENV !== "production" || process.env.ENABLE_SUBSCRIPTIONS === "true";
+}
+
+function getOrigin(req: any): string {
+  if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/$/, "");
+  const host = String(req.headers?.["x-forwarded-host"] || req.headers?.host || "");
+  const proto = String(req.headers?.["x-forwarded-proto"] || "https").split(",")[0];
+  return host ? `${proto}://${host}` : "";
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export default async function handler(req: any, res: any) {
+  if (req.method !== "POST" && req.method !== "DELETE") {
+    return res.status(405).json({ error: "Método no permitido." });
+  }
+  if (!suscripcionesHabilitadas()) {
+    return res.status(404).json({ error: "Las suscripciones no están habilitadas." });
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL || "";
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY || "";
+  const mpToken = process.env.MP_ACCESS_TOKEN || "";
+  if (!supabaseUrl || !serviceKey) {
+    return res.status(500).json({ error: "Configuración de Supabase faltante en el servidor." });
+  }
+  if (!mpToken) {
+    return res.status(503).json({ error: "Los pagos todavía no están configurados." });
+  }
+  const supabase = createClient(supabaseUrl, serviceKey);
+
+  try {
+    const authHeader = String(req.headers?.authorization || "");
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!token) return res.status(401).json({ error: "No autenticado." });
+    const { data: userData, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !userData?.user) return res.status(401).json({ error: "Sesión inválida o expirada." });
+    const user = userData.user;
+
+    const { data: negocio, error: negocioError } = await supabase
+      .from("negocios")
+      .select("id, nombre, trial_usado")
+      .eq("owner_id", user.id)
+      .maybeSingle();
+    if (negocioError) return res.status(500).json({ error: "No se pudo verificar tu negocio." });
+    if (!negocio) return res.status(403).json({ error: "Necesitás tener un negocio registrado." });
+
+    // ---------- Cancelar ----------
+    if (req.method === "DELETE") {
+      const { data: susc } = await supabase
+        .from("suscripciones")
+        .select("id, mp_preapproval_id")
+        .eq("negocio_id", negocio.id)
+        .in("estado", ["autorizada", "pausada", "pendiente"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!susc) return res.status(404).json({ error: "No tenés una suscripción para cancelar." });
+
+      if (susc.mp_preapproval_id) {
+        const mpRes = await fetch(`https://api.mercadopago.com/preapproval/${encodeURIComponent(susc.mp_preapproval_id)}`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${mpToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "cancelled" }),
+        });
+        if (!mpRes.ok) {
+          console.error("Mercado Pago no pudo cancelar la suscripción:", mpRes.status, await mpRes.text().catch(() => ""));
+          return res.status(502).json({ error: "No se pudo cancelar la suscripción. Probá de nuevo en unos minutos." });
+        }
+      }
+      await supabase.from("suscripciones").update({ estado: "cancelada", updated_at: new Date().toISOString() }).eq("id", susc.id);
+      return res.status(200).json({ ok: true });
+    }
+
+    // ---------- Suscribirse ----------
+    const { planId, payerEmail } = req.body || {};
+    if (typeof planId !== "string" || !planId) return res.status(400).json({ error: "Falta el plan." });
+
+    const { data: plan } = await supabase.from("planes").select("*").eq("id", planId).eq("activo", true).maybeSingle();
+    if (!plan || plan.tipo !== "plan" || Number(plan.precio_ars) <= 0 || !plan.duracion_dias) {
+      return res.status(400).json({ error: "Ese plan no admite suscripción." });
+    }
+
+    const { data: activa } = await supabase
+      .from("suscripciones")
+      .select("id")
+      .eq("negocio_id", negocio.id)
+      .eq("estado", "autorizada")
+      .limit(1)
+      .maybeSingle();
+    if (activa) return res.status(409).json({ error: "Ya tenés una suscripción activa. Cancelala antes de crear otra." });
+
+    // Las que quedaron sin completar se descartan
+    await supabase
+      .from("suscripciones")
+      .update({ estado: "cancelada", updated_at: new Date().toISOString() })
+      .eq("negocio_id", negocio.id)
+      .eq("estado", "pendiente");
+
+    const email = typeof payerEmail === "string" && payerEmail.trim() ? payerEmail.trim().toLowerCase() : String(user.email || "");
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: "Ingresá un email válido para Mercado Pago." });
+
+    const conTrial = !negocio.trial_usado;
+    const { data: susc, error: suscError } = await supabase
+      .from("suscripciones")
+      .insert({
+        negocio_id: negocio.id,
+        owner_id: user.id,
+        plan_id: plan.id,
+        monto_ars: plan.precio_ars,
+        con_trial: conTrial,
+        trial_dias: conTrial ? TRIAL_DIAS : null,
+        estado: "pendiente",
+      })
+      .select("id")
+      .single();
+    if (suscError || !susc) {
+      console.error("Error creando la suscripción:", suscError);
+      return res.status(500).json({ error: "No se pudo iniciar la suscripción." });
+    }
+
+    const origin = getOrigin(req);
+    const autoRecurring: Record<string, unknown> = {
+      frequency: Number(plan.duracion_dias),
+      frequency_type: "days",
+      transaction_amount: Number(plan.precio_ars),
+      currency_id: "ARS",
+    };
+    if (conTrial) {
+      autoRecurring.free_trial = { frequency: TRIAL_DIAS, frequency_type: "days" };
+    }
+
+    const mpRes = await fetch("https://api.mercadopago.com/preapproval", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${mpToken}`, "Content-Type": "application/json", "X-Idempotency-Key": susc.id },
+      body: JSON.stringify({
+        reason: `Suscripción plan ${plan.nombre} - Oberá en Oferta`.slice(0, 250),
+        external_reference: susc.id,
+        payer_email: email,
+        back_url: `${origin}/?suscripcion=ok`,
+        status: "pending",
+        auto_recurring: autoRecurring,
+      }),
+    });
+
+    if (!mpRes.ok) {
+      console.error("Mercado Pago rechazó la suscripción:", mpRes.status, await mpRes.text().catch(() => ""));
+      await supabase.from("suscripciones").update({ estado: "cancelada", updated_at: new Date().toISOString() }).eq("id", susc.id);
+      return res.status(502).json({ error: "No se pudo crear la suscripción en Mercado Pago. Revisá el email e intentá de nuevo." });
+    }
+
+    const preapproval = await mpRes.json();
+    await supabase
+      .from("suscripciones")
+      .update({ mp_preapproval_id: String(preapproval.id), updated_at: new Date().toISOString() })
+      .eq("id", susc.id);
+
+    return res.status(200).json({ init_point: preapproval.init_point, suscripcionId: susc.id, conTrial, trialDias: conTrial ? TRIAL_DIAS : 0 });
+  } catch (err: any) {
+    console.error("Error en /api/payments/subscription:", err);
+    return res.status(500).json({ error: "Ocurrió un error con la suscripción." });
+  }
+}

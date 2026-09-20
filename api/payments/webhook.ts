@@ -29,6 +29,97 @@ function firmaValida(req: any, dataId: string, secret: string): boolean {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+// ---------- Suscripciones (TEMPORAL, solo pruebas; ver api/payments/subscription.ts) ----------
+function suscripcionesHabilitadas(): boolean {
+  return process.env.VERCEL_ENV !== "production" || process.env.ENABLE_SUBSCRIPTIONS === "true";
+}
+
+const mismoMonto = (a: unknown, b: unknown) => Math.abs(Number(a) - Number(b)) < 0.01;
+
+// Cobro recurrente aprobado: se valida contra el pago real de Mercado Pago y se aplica una sola vez
+async function aplicarPagoDeSuscripcion(supabase: any, mpToken: string, susc: any, paymentId: string) {
+  const r = await fetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+    headers: { Authorization: `Bearer ${mpToken}` },
+  });
+  if (r.status === 404) return { code: 200, body: { ignored: true } };
+  if (!r.ok) return { code: 502, body: { error: "No se pudo consultar el pago." } };
+  const pay = await r.json();
+
+  if (pay.status !== "approved") return { code: 200, body: { ok: true, status: pay.status } };
+  if (!mismoMonto(pay.transaction_amount, susc.monto_ars) || pay.currency_id !== "ARS") {
+    console.error("Cobro de suscripción con monto o moneda que no coinciden:", susc.id, pay.transaction_amount, pay.currency_id);
+    return { code: 200, body: { ignored: true } };
+  }
+  const { data: aplicado, error } = await supabase.rpc("aplicar_cobro_suscripcion", {
+    p_susc_id: susc.id,
+    p_mp_payment_id: String(pay.id),
+  });
+  if (error) {
+    console.error("Error aplicando el cobro de la suscripción:", error);
+    return { code: 500, body: { error: "No se pudo aplicar el cobro." } };
+  }
+  return { code: 200, body: { ok: true, applied: !!aplicado } };
+}
+
+// Cambio de estado de la suscripción (autorizada, pausada, cancelada)
+async function procesarPreapproval(supabase: any, mpToken: string, preapprovalId: string) {
+  const r = await fetch(`https://api.mercadopago.com/preapproval/${encodeURIComponent(preapprovalId)}`, {
+    headers: { Authorization: `Bearer ${mpToken}` },
+  });
+  if (r.status === 404) return { code: 200, body: { ignored: true } };
+  if (!r.ok) return { code: 502, body: { error: "No se pudo consultar la suscripción." } };
+  const pa = await r.json();
+
+  const suscId = String(pa.external_reference || "");
+  if (!UUID_RE.test(suscId)) return { code: 200, body: { ignored: true } };
+  const { data: susc, error } = await supabase.from("suscripciones").select("*").eq("id", suscId).maybeSingle();
+  if (error) return { code: 500, body: { error: "Error leyendo la suscripción." } };
+  if (!susc || (susc.mp_preapproval_id && susc.mp_preapproval_id !== String(pa.id))) return { code: 200, body: { ignored: true } };
+
+  const now = new Date().toISOString();
+  if (pa.status === "authorized") {
+    if (!mismoMonto(pa.auto_recurring?.transaction_amount, susc.monto_ars)) {
+      console.error("Suscripción autorizada con un monto que no coincide:", susc.id);
+      return { code: 200, body: { ignored: true } };
+    }
+    const { data: aplicado, error: rpcError } = await supabase.rpc("activar_suscripcion", { p_susc_id: susc.id });
+    if (rpcError) {
+      console.error("Error activando la suscripción:", rpcError);
+      return { code: 500, body: { error: "No se pudo activar la suscripción." } };
+    }
+    return { code: 200, body: { ok: true, applied: !!aplicado } };
+  }
+  if (pa.status === "paused") {
+    await supabase.from("suscripciones").update({ estado: "pausada", updated_at: now }).eq("id", susc.id).neq("estado", "cancelada");
+  } else if (pa.status === "cancelled") {
+    await supabase.from("suscripciones").update({ estado: "cancelada", updated_at: now }).eq("id", susc.id);
+  }
+  return { code: 200, body: { ok: true } };
+}
+
+// Aviso de cobro recurrente (authorized_payment)
+async function procesarCobroSuscripcion(supabase: any, mpToken: string, authorizedPaymentId: string) {
+  const r = await fetch(`https://api.mercadopago.com/authorized_payments/${encodeURIComponent(authorizedPaymentId)}`, {
+    headers: { Authorization: `Bearer ${mpToken}` },
+  });
+  if (r.status === 404) return { code: 200, body: { ignored: true } };
+  if (!r.ok) return { code: 502, body: { error: "No se pudo consultar el cobro." } };
+  const ap = await r.json();
+
+  const paymentId = ap.payment?.id ? String(ap.payment.id) : "";
+  if (!ap.preapproval_id || !paymentId) return { code: 200, body: { ignored: true } };
+
+  const { data: susc, error } = await supabase
+    .from("suscripciones")
+    .select("*")
+    .eq("mp_preapproval_id", String(ap.preapproval_id))
+    .maybeSingle();
+  if (error) return { code: 500, body: { error: "Error leyendo la suscripción." } };
+  if (!susc) return { code: 200, body: { ignored: true } };
+
+  return aplicarPagoDeSuscripcion(supabase, mpToken, susc, paymentId);
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST" && req.method !== "GET") {
     return res.status(405).json({ error: "Método no permitido." });
@@ -49,8 +140,11 @@ export default async function handler(req: any, res: any) {
     const tipo = String(body.type || query.type || query.topic || "");
     const dataId = String(body?.data?.id || query["data.id"] || (query.topic === "payment" ? query.id : "") || "");
 
-    // Solo nos interesan las notificaciones de pagos
-    if (tipo !== "payment" || !dataId) {
+    // Nos interesan los pagos y, en modo prueba, los eventos de suscripciones
+    const TIPOS_PREAPPROVAL = ["subscription_preapproval", "preapproval"];
+    const TIPOS_COBRO_SUSC = ["subscription_authorized_payment", "authorized_payment"];
+    const esSuscripcion = TIPOS_PREAPPROVAL.includes(tipo) || TIPOS_COBRO_SUSC.includes(tipo);
+    if (!dataId || (tipo !== "payment" && !(esSuscripcion && suscripcionesHabilitadas()))) {
       return res.status(200).json({ ignored: true });
     }
 
@@ -62,6 +156,15 @@ export default async function handler(req: any, res: any) {
       }
     } else {
       console.warn("MP_WEBHOOK_SECRET no configurado: se valida solo consultando el pago a Mercado Pago.");
+    }
+
+    if (TIPOS_PREAPPROVAL.includes(tipo)) {
+      const r = await procesarPreapproval(supabase, mpToken, dataId);
+      return res.status(r.code).json(r.body);
+    }
+    if (TIPOS_COBRO_SUSC.includes(tipo)) {
+      const r = await procesarCobroSuscripcion(supabase, mpToken, dataId);
+      return res.status(r.code).json(r.body);
     }
 
     // Consultar el pago real a Mercado Pago
@@ -80,7 +183,16 @@ export default async function handler(req: any, res: any) {
 
     const { data: pago, error: pagoError } = await supabase.from("pagos").select("*").eq("id", pagoId).maybeSingle();
     if (pagoError) return res.status(500).json({ error: "Error leyendo el pago." });
-    if (!pago) return res.status(200).json({ ignored: true });
+    if (!pago) {
+      if (suscripcionesHabilitadas() && String(payment.status) === "approved") {
+        const { data: susc } = await supabase.from("suscripciones").select("*").eq("id", pagoId).maybeSingle();
+        if (susc) {
+          const r = await aplicarPagoDeSuscripcion(supabase, mpToken, susc, String(payment.id));
+          return res.status(r.code).json(r.body);
+        }
+      }
+      return res.status(200).json({ ignored: true });
+    }
 
     const status = String(payment.status || "");
     const now = new Date().toISOString();

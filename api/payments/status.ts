@@ -4,6 +4,35 @@ import { createClient } from "@supabase/supabase-js";
 // Devuelve, para el comercio logueado: su plan vigente, cuántas ofertas activas usa, los planes disponibles
 // y sus últimos pagos. La tabla de pagos no es legible desde el navegador: pasa siempre por acá.
 
+// Suscripciones: TEMPORAL, solo pruebas (ver api/payments/subscription.ts)
+const TRIAL_DIAS = Math.max(1, Number(process.env.SUBSCRIPTION_TRIAL_DAYS) || 15);
+function suscripcionesHabilitadas(): boolean {
+  return process.env.VERCEL_ENV !== "production" || process.env.ENABLE_SUBSCRIPTIONS === "true";
+}
+
+// Si el usuario volvió de Mercado Pago y el webhook todavía no llegó, se consulta el estado real de la suscripción
+async function sincronizarSuscripcionPendiente(supabase: any, mpToken: string, susc: any): Promise<boolean> {
+  try {
+    const r = await fetch(`https://api.mercadopago.com/preapproval/${encodeURIComponent(susc.mp_preapproval_id)}`, {
+      headers: { Authorization: `Bearer ${mpToken}` },
+    });
+    if (!r.ok) return false;
+    const pa = await r.json();
+    if (String(pa.external_reference || "") !== susc.id) return false;
+    if (pa.status === "authorized" && Math.abs(Number(pa.auto_recurring?.transaction_amount) - Number(susc.monto_ars)) < 0.01) {
+      const { error } = await supabase.rpc("activar_suscripcion", { p_susc_id: susc.id });
+      return !error;
+    }
+    if (pa.status === "cancelled") {
+      await supabase.from("suscripciones").update({ estado: "cancelada", updated_at: new Date().toISOString() }).eq("id", susc.id);
+    }
+    return false;
+  } catch (e) {
+    console.error("No se pudo sincronizar la suscripción pendiente:", e);
+    return false;
+  }
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Método no permitido." });
@@ -14,7 +43,7 @@ export default async function handler(req: any, res: any) {
   if (!supabaseUrl || !serviceKey) {
     return res.status(500).json({ error: "Configuración de Supabase faltante en el servidor." });
   }
-  const supabase = createClient(supabaseUrl, serviceKey);
+  const supabase: any = createClient(supabaseUrl, serviceKey);
 
   try {
     const authHeader = String(req.headers?.authorization || "");
@@ -30,14 +59,42 @@ export default async function handler(req: any, res: any) {
       .order("orden", { ascending: true });
 
     const pagosDisponibles = process.env.MP_ACCESS_TOKEN ? true : false;
+    const suscripcionesDisponibles = suscripcionesHabilitadas();
 
-    const { data: negocio, error: negocioError } = await supabase
+    const negocioColumns = suscripcionesDisponibles ? "id, nombre, plan_id, plan_vence_at, trial_usado" : "id, nombre, plan_id, plan_vence_at";
+    let { data: negocio, error: negocioError } = await supabase
       .from("negocios")
-      .select("id, nombre, plan_id, plan_vence_at")
+      .select(negocioColumns)
       .eq("owner_id", userData.user.id)
       .maybeSingle();
     if (negocioError) return res.status(500).json({ error: "No se pudo leer tu negocio." });
-    if (!negocio) return res.status(200).json({ negocio: null, planes: planes || [], pagosDisponibles });
+    if (!negocio) return res.status(200).json({ negocio: null, planes: planes || [], pagosDisponibles, suscripcionesDisponibles });
+
+    // Suscripción vigente (modo prueba)
+    let suscripcion: any = null;
+    if (suscripcionesDisponibles) {
+      const cols = "id, plan_id, estado, con_trial, trial_dias, monto_ars, mp_preapproval_id";
+      const consultar = () =>
+        supabase
+          .from("suscripciones")
+          .select(cols)
+          .eq("negocio_id", negocio.id)
+          .in("estado", ["pendiente", "autorizada", "pausada"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+      let { data: susc } = await consultar();
+
+      if (susc && susc.estado === "pendiente" && susc.mp_preapproval_id && process.env.MP_ACCESS_TOKEN) {
+        const cambio = await sincronizarSuscripcionPendiente(supabase, process.env.MP_ACCESS_TOKEN, susc);
+        if (cambio) {
+          ({ data: susc } = await consultar());
+          const { data: negocioNuevo } = await supabase.from("negocios").select(negocioColumns).eq("id", negocio.id).maybeSingle();
+          if (negocioNuevo) negocio = negocioNuevo;
+        }
+      }
+      suscripcion = susc ? { id: susc.id, planId: susc.plan_id, estado: susc.estado, conTrial: susc.con_trial, trialDias: susc.trial_dias } : null;
+    }
 
     const vigente =
       negocio.plan_id !== "gratis" && negocio.plan_vence_at && new Date(negocio.plan_vence_at) > new Date();
@@ -71,6 +128,10 @@ export default async function handler(req: any, res: any) {
       planes: planes || [],
       pagos: pagos || [],
       pagosDisponibles,
+      suscripcionesDisponibles,
+      suscripcion,
+      trialDisponible: suscripcionesDisponibles && !negocio.trial_usado,
+      trialDias: TRIAL_DIAS,
     });
   } catch (err: any) {
     console.error("Error en /api/payments/status:", err);

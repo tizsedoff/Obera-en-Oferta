@@ -28,6 +28,11 @@ interface PlanStatus {
   planes: Plan[];
   pagos?: Pago[];
   pagosDisponibles: boolean;
+  // Suscripciones: TEMPORAL, solo pruebas
+  suscripcionesDisponibles?: boolean;
+  suscripcion?: { id: string; planId: string; estado: 'pendiente' | 'autorizada' | 'pausada'; conTrial: boolean; trialDias: number | null } | null;
+  trialDisponible?: boolean;
+  trialDias?: number;
 }
 
 const ESTADOS: Record<Pago['estado'], { texto: string; clase: string }> = {
@@ -51,6 +56,8 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
   const [error, setError] = useState<string | null>(null);
   const [payingId, setPayingId] = useState<string | null>(null);
   const [ofertaAdestacar, setOfertaAdestacar] = useState('');
+  const [payerEmail, setPayerEmail] = useState('');
+  const [cancelando, setCancelando] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: 'ok' | 'error' | 'info'; texto: string } | null>(null);
 
   const getToken = async () => (await supabase.auth.getSession()).data.session?.access_token || null;
@@ -79,6 +86,15 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
   // Mensaje al volver de Mercado Pago (?pago=ok|error|pendiente)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const susc = params.get('suscripcion');
+    if (susc) {
+      setAviso({ tipo: 'info', texto: 'Volviste de Mercado Pago. Si la suscripción ya quedó autorizada, tu plan se activa en unos segundos; tocá "Actualizar" para verlo.' });
+      params.delete('suscripcion');
+      params.delete('preapproval_id');
+      const q = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (q ? `?${q}` : '') + window.location.hash);
+      return;
+    }
     const pago = params.get('pago');
     if (!pago) return;
     if (pago === 'ok') setAviso({ tipo: 'ok', texto: '¡Pago recibido! Tu plan se activa en unos segundos; si no lo ves, tocá "Actualizar".' });
@@ -113,6 +129,46 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
     }
   };
 
+  const suscribir = async (plan: Plan) => {
+    setAviso(null);
+    setPayingId(`sub:${plan.id}`);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Tu sesión expiró, volvé a iniciar sesión.');
+      const res = await fetch('/api/payments/subscription', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ planId: plan.id, payerEmail: payerEmail.trim() || undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.init_point) throw new Error(data.error || 'No se pudo crear la suscripción.');
+      window.location.href = data.init_point;
+    } catch (e: any) {
+      setAviso({ tipo: 'error', texto: e.message });
+      setPayingId(null);
+    }
+  };
+
+  const cancelarSuscripcion = async () => {
+    if (!window.confirm('¿Cancelar la suscripción? Tu plan sigue activo hasta que venza lo ya pagado.')) return;
+    setAviso(null);
+    setCancelando(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Tu sesión expiró, volvé a iniciar sesión.');
+      const res = await fetch('/api/payments/subscription', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'No se pudo cancelar la suscripción.');
+      setAviso({ tipo: 'ok', texto: 'Suscripción cancelada. No se harán más cobros.' });
+      await cargar();
+    } catch (e: any) {
+      setAviso({ tipo: 'error', texto: e.message });
+    } finally {
+      setCancelando(false);
+    }
+  };
+
+  const suscripcionActiva = status?.suscripcion || null;
   const planesPagos = (status?.planes || []).filter((p) => p.tipo === 'plan' && Number(p.precio_ars) > 0);
   const extras = (status?.planes || []).filter((p) => p.tipo === 'extra');
 
@@ -187,6 +243,46 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
 
       {status?.negocio && status.pagosDisponibles && (
         <>
+          {status.suscripcionesDisponibles && (
+            <div className="rounded-2xl border border-dashed border-slate-300 dark:border-zinc-700 p-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-wider font-extrabold bg-slate-900 dark:bg-zinc-700 text-white px-2 py-0.5 rounded-full">🧪 Modo prueba</span>
+                <h4 className="font-display font-black text-sm text-slate-900 dark:text-zinc-50">Suscripción</h4>
+              </div>
+              {suscripcionActiva ? (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-slate-600 dark:text-zinc-300">
+                    {suscripcionActiva.estado === 'pendiente' && 'Pendiente de autorización en Mercado Pago.'}
+                    {suscripcionActiva.estado === 'autorizada' &&
+                      `Activa${suscripcionActiva.conTrial ? ` · incluye ${suscripcionActiva.trialDias} días de prueba gratis` : ''}. Se cobra automáticamente.`}
+                    {suscripcionActiva.estado === 'pausada' && 'Pausada en Mercado Pago.'}
+                  </p>
+                  <button
+                    onClick={cancelarSuscripcion}
+                    disabled={cancelando}
+                    className="px-3 py-1.5 rounded-xl border border-rose-300 dark:border-rose-900 text-rose-600 dark:text-rose-400 text-xs font-bold hover:bg-rose-50 dark:hover:bg-rose-950/30 disabled:opacity-60 cursor-pointer"
+                  >
+                    {cancelando ? 'Cancelando...' : 'Cancelar suscripción'}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-slate-500 dark:text-zinc-400">
+                    Cobro automático en cada plan
+                    {status.trialDisponible ? ` con ${status.trialDias} días de prueba gratis (una sola vez por negocio)` : ''}. Los destacados siguen siendo pago único.
+                  </p>
+                  <input
+                    type="email"
+                    value={payerEmail}
+                    onChange={(e) => setPayerEmail(e.target.value)}
+                    placeholder="Email de tu cuenta de Mercado Pago (opcional)"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-800 dark:text-zinc-100"
+                  />
+                </>
+              )}
+            </div>
+          )}
+
           {planesPagos.length > 0 && (
             <div className="grid sm:grid-cols-2 gap-3">
               {planesPagos.map((plan) => (
@@ -204,8 +300,18 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
                     className="mt-auto px-4 py-2 rounded-xl bg-brand-orange dark:bg-indigo-600 text-white text-xs font-extrabold hover:opacity-90 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
                   >
                     {payingId === plan.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {status.plan?.id === plan.id ? 'Renovar / extender' : 'Contratar'}
+                    {status.plan?.id === plan.id ? 'Renovar / extender (pago único)' : 'Contratar (pago único)'}
                   </button>
+                  {status.suscripcionesDisponibles && !suscripcionActiva && (
+                    <button
+                      onClick={() => suscribir(plan)}
+                      disabled={payingId !== null}
+                      className="px-4 py-2 rounded-xl border-2 border-dashed border-brand-orange dark:border-indigo-500 text-brand-orange dark:text-indigo-400 text-xs font-extrabold hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      {payingId === `sub:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                      🧪 {status.trialDisponible ? `Suscribirme: ${status.trialDias} días gratis` : `Suscribirme (cada ${plan.duracion_dias} días)`}
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
