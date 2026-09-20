@@ -379,7 +379,7 @@ export default function AdminPanel({
         // Add new shop
         const res = await fetch('/api/shops', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
           body: JSON.stringify(finalShopForm)
         });
         if (!res.ok) {

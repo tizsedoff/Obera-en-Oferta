@@ -361,9 +361,13 @@ export default function App() {
     } | null
   ) => {
     try {
+      const { data: { session: shopSession } } = await supabase.auth.getSession();
       const res = await fetch("/api/shops", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(shopSession ? { "Authorization": `Bearer ${shopSession.access_token}` } : {})
+        },
         body: JSON.stringify({
           ownerId: supabaseUserId,
           name: shopData.name,

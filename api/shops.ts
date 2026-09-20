@@ -172,7 +172,61 @@ export default async function handler(req: any, res: any) {
 
   if (req.method === "POST") {
     try {
-      const { ownerId, name, logo, category, zone, address, phone, latitude, longitude, base64Logo, initialOffer } = req.body;
+      if (!supabase) {
+        return res.status(500).json({ error: "Configuración de Supabase faltante en el servidor." });
+      }
+
+      const { ownerId: requestedOwnerId, name, logo, category, zone, address, phone, latitude, longitude, base64Logo, initialOffer } = req.body || {};
+      if (!name) {
+        return res.status(400).json({ error: "Falta el nombre del negocio." });
+      }
+
+      // Quién puede crear un negocio y a nombre de quién:
+      //  - un admin: puede asignarlo a cualquier dueño (o dejarlo sin dueño);
+      //  - un usuario con sesión: solo a sí mismo, y un solo negocio por cuenta;
+      //  - registro nuevo de comercio (todavía sin sesión porque falta confirmar el email):
+      //    solo para una cuenta recién creada (últimos 30 min), de rol comercio y sin negocio.
+      let ownerId: string | null = null;
+      const adminContext = await getAdminFromRequest(req, supabase);
+
+      if (adminContext) {
+        ownerId = requestedOwnerId || null;
+      } else {
+        const authHeader = req.headers?.authorization || "";
+        const token = typeof authHeader === "string" && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+
+        if (token) {
+          const { data: userData, error: userError } = await supabase.auth.getUser(token);
+          if (userError || !userData?.user) {
+            return res.status(401).json({ error: "Sesión inválida o expirada." });
+          }
+          ownerId = userData.user.id;
+        } else {
+          if (!requestedOwnerId) {
+            return res.status(401).json({ error: "No autenticado." });
+          }
+          const { data: ownerData, error: ownerError } = await supabase.auth.admin.getUserById(requestedOwnerId);
+          const owner = ownerData?.user;
+          const createdAt = owner?.created_at ? new Date(owner.created_at).getTime() : 0;
+          const isFresh = Date.now() - createdAt < 30 * 60 * 1000;
+          if (ownerError || !owner || !isFresh || owner.user_metadata?.rol !== "merchant") {
+            return res.status(403).json({ error: "No se puede registrar el negocio para esta cuenta." });
+          }
+          ownerId = owner.id;
+        }
+
+        const { count: existingShops, error: countError } = await supabase
+          .from("negocios")
+          .select("id", { count: "exact", head: true })
+          .eq("owner_id", ownerId);
+        if (countError) {
+          return res.status(500).json({ error: "No se pudo verificar la cuenta." });
+        }
+        if ((existingShops || 0) > 0) {
+          return res.status(409).json({ error: "Esta cuenta ya tiene un negocio registrado." });
+        }
+      }
+
       let finalLogo = logo || "🛍️";
 
       if (base64Logo && base64Logo.startsWith("data:")) {
