@@ -6,6 +6,12 @@ import { createClient } from "@supabase/supabase-js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Modo demo: simula un pago aprobado SIN pasar por Mercado Pago. Nunca en producción (no hay forma de forzarlo).
+// Se apaga también en staging con PAYMENTS_DEMO=false.
+function demoHabilitado(): boolean {
+  return process.env.VERCEL_ENV !== "production" && process.env.PAYMENTS_DEMO !== "false";
+}
+
 function getOrigin(req: any): string {
   if (process.env.SITE_URL) return process.env.SITE_URL.replace(/\/$/, "");
   const host = String(req.headers?.["x-forwarded-host"] || req.headers?.host || "");
@@ -23,9 +29,6 @@ export default async function handler(req: any, res: any) {
   const mpToken = process.env.MP_ACCESS_TOKEN || "";
   if (!supabaseUrl || !serviceKey) {
     return res.status(500).json({ error: "Configuración de Supabase faltante en el servidor." });
-  }
-  if (!mpToken) {
-    return res.status(503).json({ error: "Los pagos todavía no están configurados." });
   }
   const supabase = createClient(supabaseUrl, serviceKey);
 
@@ -76,6 +79,14 @@ export default async function handler(req: any, res: any) {
       ofertaIdFinal = oferta.id;
     }
 
+    const demo = req.body?.demo === true;
+    if (demo && !demoHabilitado()) {
+      return res.status(403).json({ error: "El modo demo no está habilitado." });
+    }
+    if (!demo && !mpToken) {
+      return res.status(503).json({ error: "Los pagos todavía no están configurados." });
+    }
+
     // 5) Registrar el pago pendiente
     const { data: pago, error: pagoError } = await supabase
       .from("pagos")
@@ -92,6 +103,21 @@ export default async function handler(req: any, res: any) {
     if (pagoError || !pago) {
       console.error("Error creando pago:", pagoError);
       return res.status(500).json({ error: "No se pudo iniciar el pago." });
+    }
+
+    // Demo: se da por aprobado y se aplica con la misma función que usa el webhook real
+    if (demo) {
+      const { data: aplicado, error: rpcError } = await supabase.rpc("aplicar_pago_aprobado", {
+        p_pago_id: pago.id,
+        p_mp_payment_id: `DEMO-${pago.id}`,
+        p_mp_status: "demo",
+      });
+      if (rpcError) {
+        console.error("Error aplicando el pago demo:", rpcError);
+        return res.status(500).json({ error: "No se pudo aplicar el pago de prueba." });
+      }
+      await supabase.from("pagos").update({ mp_preference_id: "demo" }).eq("id", pago.id);
+      return res.status(200).json({ demo: true, pagoId: pago.id, aplicado: !!aplicado });
     }
 
     // 6) Preferencia de Mercado Pago

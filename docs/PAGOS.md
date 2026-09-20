@@ -54,3 +54,14 @@ Cobro automático cada `duracion_dias` del plan, con **15 días de prueba gratis
 **Para sacarla:** borrar `api/payments/subscription.ts`, los bloques "suscripciones" de `status.ts` y `webhook.ts`, el bloque de suscripción de `PlanPanel.tsx` y el SQL `2026-09-20-suscripciones-prueba.sql`.
 
 **A confirmar en la primera prueba:** que Mercado Pago acepte `free_trial` al crear la suscripción sin plan asociado (si lo rechaza, la app muestra un error y no crea nada).
+
+---
+
+## Modo demo (pagos simulados, sin Mercado Pago)
+Para probar todo el flujo sin cuenta de Mercado Pago: en "Mi plan y pagos" aparecen botones **🧪 Demo** (pago único, destacar oferta, suscripción con prueba gratis y "Simular cobro del ciclo"). Aplican el plan o el destacado con las mismas funciones SQL que usa el webhook real, y dejan el registro en `pagos` con `mp_status = 'demo'` y `mp_payment_id = 'DEMO-…'`. No se cobra nada.
+
+- **Nunca funciona en producción:** el servidor lo bloquea si `VERCEL_ENV = production`, sin variable que lo pueda forzar.
+- Se apaga en staging con `PAYMENTS_DEMO=false`.
+- Sin `MP_ACCESS_TOKEN` solo se ven los botones demo; con el token cargado se ven los reales y los demo juntos.
+- "Simular cobro del ciclo" equivale al cobro que Mercado Pago haría cuando termina la prueba: suma otros `duracion_dias` al plan. Sirve para probar renovaciones sin esperar 15 días.
+- Para dejar los datos de prueba limpios: `delete from public.pagos where mp_status = 'demo';` y, si hace falta, restablecer el negocio con `update public.negocios set plan_id='gratis', plan_vence_at=null, trial_usado=false where id='<id>';`.

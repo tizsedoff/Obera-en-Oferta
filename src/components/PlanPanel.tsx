@@ -30,6 +30,7 @@ interface PlanStatus {
   pagosDisponibles: boolean;
   // Suscripciones: TEMPORAL, solo pruebas
   suscripcionesDisponibles?: boolean;
+  demoDisponible?: boolean;
   suscripcion?: { id: string; planId: string; estado: 'pendiente' | 'autorizada' | 'pausada'; conTrial: boolean; trialDias: number | null } | null;
   trialDisponible?: boolean;
   trialDias?: number;
@@ -106,23 +107,36 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
     window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash);
   }, []);
 
-  const pagar = async (plan: Plan) => {
+  // Tras un pago demo se refrescan el plan y la lista de ofertas (destacadas)
+  const refrescarTodo = async () => {
+    await cargar();
+    window.dispatchEvent(new CustomEvent('refresh-live-data'));
+  };
+
+  const pagar = async (plan: Plan, demo = false) => {
     setAviso(null);
     if (plan.tipo === 'extra' && !ofertaAdestacar) {
       setAviso({ tipo: 'error', texto: 'Elegí primero qué oferta querés destacar.' });
       return;
     }
-    setPayingId(plan.id);
+    setPayingId(demo ? `demo:${plan.id}` : plan.id);
     try {
       const token = await getToken();
       if (!token) throw new Error('Tu sesión expiró, volvé a iniciar sesión.');
       const res = await fetch('/api/payments/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planId: plan.id, ofertaId: plan.tipo === 'extra' ? ofertaAdestacar : undefined }),
+        body: JSON.stringify({ planId: plan.id, ofertaId: plan.tipo === 'extra' ? ofertaAdestacar : undefined, demo: demo || undefined }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.init_point) throw new Error(data.error || 'No se pudo iniciar el pago.');
+      if (!res.ok) throw new Error(data.error || 'No se pudo iniciar el pago.');
+      if (data.demo) {
+        setAviso({ tipo: 'ok', texto: '🧪 Pago de prueba aprobado: ya quedó aplicado. Sin cobro real.' });
+        setPayingId(null);
+        await refrescarTodo();
+        return;
+      }
+      if (!data.init_point) throw new Error('No se pudo iniciar el pago.');
       window.location.href = data.init_point;
     } catch (e: any) {
       setAviso({ tipo: 'error', texto: e.message });
@@ -130,23 +144,53 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
     }
   };
 
-  const suscribir = async (plan: Plan) => {
+  const suscribir = async (plan: Plan, demo = false) => {
     setAviso(null);
-    setPayingId(`sub:${plan.id}`);
+    setPayingId(demo ? `demo-sub:${plan.id}` : `sub:${plan.id}`);
     try {
       const token = await getToken();
       if (!token) throw new Error('Tu sesión expiró, volvé a iniciar sesión.');
       const res = await fetch('/api/payments/subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planId: plan.id, payerEmail: payerEmail.trim() || undefined }),
+        body: JSON.stringify({ planId: plan.id, payerEmail: payerEmail.trim() || undefined, demo: demo || undefined }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.init_point) throw new Error(data.error || 'No se pudo crear la suscripción.');
+      if (!res.ok) throw new Error(data.error || 'No se pudo crear la suscripción.');
+      if (data.demo) {
+        setAviso({
+          tipo: 'ok',
+          texto: data.conTrial
+            ? `🧪 Suscripción de prueba activa con ${data.trialDias} días gratis. Sin cobro real.`
+            : '🧪 Suscripción de prueba activa (primer cobro simulado). Sin cobro real.',
+        });
+        setPayingId(null);
+        await refrescarTodo();
+        return;
+      }
+      if (!data.init_point) throw new Error('No se pudo crear la suscripción.');
       window.location.href = data.init_point;
     } catch (e: any) {
       setAviso({ tipo: 'error', texto: e.message });
       setPayingId(null);
+    }
+  };
+
+  const simularCobro = async () => {
+    setAviso(null);
+    setCancelando(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error('Tu sesión expiró, volvé a iniciar sesión.');
+      const res = await fetch('/api/payments/subscription', { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'No se pudo simular el cobro.');
+      setAviso({ tipo: 'ok', texto: '🧪 Cobro del ciclo simulado: el plan se extendió. Sin cobro real.' });
+      await refrescarTodo();
+    } catch (e: any) {
+      setAviso({ tipo: 'error', texto: e.message });
+    } finally {
+      setCancelando(false);
     }
   };
 
@@ -238,11 +282,11 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
         </div>
       )}
 
-      {status && !status.pagosDisponibles && (
+      {status && !status.pagosDisponibles && !status.demoDisponible && (
         <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">Los pagos todavía no están habilitados en este entorno.</p>
       )}
 
-      {status?.negocio && status.pagosDisponibles && (
+      {status?.negocio && (status.pagosDisponibles || status.demoDisponible) && (
         <>
           {status.suscripcionesDisponibles && (
             <div className="rounded-2xl border border-dashed border-slate-300 dark:border-zinc-700 p-4 space-y-2">
@@ -258,6 +302,15 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
                       `Activa${suscripcionActiva.conTrial ? ` · incluye ${suscripcionActiva.trialDias} días de prueba gratis` : ''}. Se cobra automáticamente.`}
                     {suscripcionActiva.estado === 'pausada' && 'Pausada en Mercado Pago.'}
                   </p>
+                  {status.demoDisponible && suscripcionActiva.estado === 'autorizada' && (
+                    <button
+                      onClick={simularCobro}
+                      disabled={cancelando}
+                      className="px-3 py-1.5 rounded-xl border border-dashed border-slate-400 dark:border-zinc-600 text-slate-700 dark:text-zinc-300 text-xs font-bold hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-60 cursor-pointer"
+                    >
+                      🧪 Simular cobro del ciclo
+                    </button>
+                  )}
                   <button
                     onClick={cancelarSuscripcion}
                     disabled={cancelando}
@@ -272,6 +325,7 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
                     Cobro automático en cada plan
                     {status.trialDisponible ? ` con ${status.trialDias} días de prueba gratis (una sola vez por negocio)` : ''}. Los destacados siguen siendo pago único.
                   </p>
+                  {status.pagosDisponibles && (
                   <input
                     type="email"
                     value={payerEmail}
@@ -279,6 +333,7 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
                     placeholder="Email de tu cuenta de Mercado Pago (opcional)"
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-xs text-slate-800 dark:text-zinc-100"
                   />
+                  )}
                 </>
               )}
             </div>
@@ -295,24 +350,48 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
                   <p className="text-xs text-slate-500 dark:text-zinc-400">
                     {plan.descripcion} · hasta {plan.max_ofertas_activas} ofertas activas
                   </p>
-                  <button
-                    onClick={() => pagar(plan)}
-                    disabled={payingId !== null}
-                    className="mt-auto px-4 py-2 rounded-xl bg-brand-orange dark:bg-indigo-600 text-white text-xs font-extrabold hover:opacity-90 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
-                  >
-                    {payingId === plan.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    {status.plan?.id === plan.id ? 'Renovar / extender (pago único)' : 'Contratar (pago único)'}
-                  </button>
-                  {status.suscripcionesDisponibles && !suscripcionActiva && (
-                    <button
-                      onClick={() => suscribir(plan)}
-                      disabled={payingId !== null}
-                      className="px-4 py-2 rounded-xl border-2 border-dashed border-brand-orange dark:border-indigo-500 text-brand-orange dark:text-indigo-400 text-xs font-extrabold hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
-                    >
-                      {payingId === `sub:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                      🧪 {status.trialDisponible ? `Suscribirme: ${status.trialDias} días gratis` : `Suscribirme (cada ${plan.duracion_dias} días)`}
-                    </button>
-                  )}
+                  <div className="mt-auto flex flex-col gap-2">
+                    {status.pagosDisponibles && (
+                      <button
+                        onClick={() => pagar(plan)}
+                        disabled={payingId !== null}
+                        className="px-4 py-2 rounded-xl bg-brand-orange dark:bg-indigo-600 text-white text-xs font-extrabold hover:opacity-90 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {payingId === plan.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        {status.plan?.id === plan.id ? 'Renovar / extender (pago único)' : 'Contratar (pago único)'}
+                      </button>
+                    )}
+                    {status.pagosDisponibles && status.suscripcionesDisponibles && !suscripcionActiva && (
+                      <button
+                        onClick={() => suscribir(plan)}
+                        disabled={payingId !== null}
+                        className="px-4 py-2 rounded-xl border-2 border-dashed border-brand-orange dark:border-indigo-500 text-brand-orange dark:text-indigo-400 text-xs font-extrabold hover:bg-indigo-50 dark:hover:bg-indigo-950/30 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {payingId === `sub:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        🧪 {status.trialDisponible ? `Suscribirme: ${status.trialDias} días gratis` : `Suscribirme (cada ${plan.duracion_dias} días)`}
+                      </button>
+                    )}
+                    {status.demoDisponible && (
+                      <button
+                        onClick={() => pagar(plan, true)}
+                        disabled={payingId !== null}
+                        className="px-4 py-2 rounded-xl bg-slate-900 dark:bg-zinc-700 text-white text-xs font-extrabold hover:opacity-90 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {payingId === `demo:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        🧪 Demo: simular pago de {formatoPesos(plan.precio_ars)}
+                      </button>
+                    )}
+                    {status.demoDisponible && status.suscripcionesDisponibles && !suscripcionActiva && (
+                      <button
+                        onClick={() => suscribir(plan, true)}
+                        disabled={payingId !== null}
+                        className="px-4 py-2 rounded-xl border-2 border-dashed border-slate-400 dark:border-zinc-600 text-slate-700 dark:text-zinc-300 text-xs font-extrabold hover:bg-slate-50 dark:hover:bg-zinc-800 disabled:opacity-60 cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        {payingId === `demo-sub:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        🧪 Demo: suscripción {status.trialDisponible ? `con ${status.trialDias} días gratis` : 'sin prueba (ya usada)'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -342,17 +421,30 @@ export default function PlanPanel({ myOffers }: PlanPanelProps) {
                     ))}
                   </select>
                   <div className="flex flex-wrap gap-2">
-                    {extras.map((plan) => (
-                      <button
-                        key={plan.id}
-                        onClick={() => pagar(plan)}
-                        disabled={payingId !== null}
-                        className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-extrabold disabled:opacity-60 cursor-pointer flex items-center gap-2"
-                      >
-                        {payingId === plan.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                        {plan.duracion_dias} días · {formatoPesos(plan.precio_ars)}
-                      </button>
-                    ))}
+                    {status.pagosDisponibles &&
+                      extras.map((plan) => (
+                        <button
+                          key={plan.id}
+                          onClick={() => pagar(plan)}
+                          disabled={payingId !== null}
+                          className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-extrabold disabled:opacity-60 cursor-pointer flex items-center gap-2"
+                        >
+                          {payingId === plan.id ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                          {plan.duracion_dias} días · {formatoPesos(plan.precio_ars)}
+                        </button>
+                      ))}
+                    {status.demoDisponible &&
+                      extras.map((plan) => (
+                        <button
+                          key={`demo-${plan.id}`}
+                          onClick={() => pagar(plan, true)}
+                          disabled={payingId !== null}
+                          className="px-3.5 py-2 rounded-xl border-2 border-dashed border-amber-500 text-amber-700 dark:text-amber-400 text-xs font-extrabold hover:bg-amber-100/60 dark:hover:bg-amber-950/30 disabled:opacity-60 cursor-pointer flex items-center gap-2"
+                        >
+                          {payingId === `demo:${plan.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                          🧪 Demo · {plan.duracion_dias} días
+                        </button>
+                      ))}
                   </div>
                 </>
               )}

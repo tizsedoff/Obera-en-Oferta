@@ -6,6 +6,9 @@ import { createClient } from "@supabase/supabase-js";
 
 // Suscripciones: TEMPORAL, solo pruebas (ver api/payments/subscription.ts)
 const TRIAL_DIAS = Math.max(1, Number(process.env.SUBSCRIPTION_TRIAL_DAYS) || 15);
+function demoHabilitado(): boolean {
+  return process.env.VERCEL_ENV !== "production" && process.env.PAYMENTS_DEMO !== "false";
+}
 function suscripcionesHabilitadas(): boolean {
   return process.env.VERCEL_ENV !== "production" || process.env.ENABLE_SUBSCRIPTIONS === "true";
 }
@@ -60,6 +63,7 @@ export default async function handler(req: any, res: any) {
 
     const pagosDisponibles = process.env.MP_ACCESS_TOKEN ? true : false;
     const suscripcionesDisponibles = suscripcionesHabilitadas();
+    const demoDisponible = demoHabilitado();
 
     const negocioColumns = suscripcionesDisponibles ? "id, nombre, plan_id, plan_vence_at, trial_usado" : "id, nombre, plan_id, plan_vence_at";
     let { data: negocio, error: negocioError } = await supabase
@@ -68,7 +72,7 @@ export default async function handler(req: any, res: any) {
       .eq("owner_id", userData.user.id)
       .maybeSingle();
     if (negocioError) return res.status(500).json({ error: "No se pudo leer tu negocio." });
-    if (!negocio) return res.status(200).json({ negocio: null, planes: planes || [], pagosDisponibles, suscripcionesDisponibles });
+    if (!negocio) return res.status(200).json({ negocio: null, planes: planes || [], pagosDisponibles, suscripcionesDisponibles, demoDisponible });
 
     // Suscripción vigente (modo prueba)
     let suscripcion: any = null;
@@ -129,6 +133,7 @@ export default async function handler(req: any, res: any) {
       pagos: pagos || [],
       pagosDisponibles,
       suscripcionesDisponibles,
+      demoDisponible,
       suscripcion,
       trialDisponible: suscripcionesDisponibles && !negocio.trial_usado,
       trialDias: TRIAL_DIAS,

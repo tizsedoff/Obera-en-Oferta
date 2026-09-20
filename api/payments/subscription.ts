@@ -1,16 +1,23 @@
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 
 // TEMPORAL - SOLO PARA PRUEBAS.
-// POST   /api/payments/subscription  { planId, payerEmail? }  -> crea una suscripción en Mercado Pago (con prueba gratuita si el negocio no la usó)
-// DELETE /api/payments/subscription                            -> cancela la suscripción del negocio (el plan sigue hasta que venza lo ya pagado)
+// POST   /api/payments/subscription  { planId, payerEmail?, demo? }  -> crea una suscripción (con prueba gratuita si el negocio no la usó)
+// PATCH  /api/payments/subscription                                  -> [solo demo] simula el cobro del siguiente ciclo
+// DELETE /api/payments/subscription                                  -> cancela la suscripción (el plan sigue hasta que venza lo ya otorgado)
 //
-// Solo está activa fuera de producción, o en producción si ENABLE_SUBSCRIPTIONS=true.
-// Para sacarla: borrar este archivo, el bloque "suscripciones" de status.ts/webhook.ts y el botón en PlanPanel.tsx.
+// Está activa fuera de producción, o en producción si ENABLE_SUBSCRIPTIONS=true.
+// El modo demo (sin Mercado Pago) nunca funciona en producción.
+// Para sacarla: borrar este archivo, los bloques "suscripciones" de status.ts/webhook.ts y la sección en PlanPanel.tsx.
 
 const TRIAL_DIAS = Math.max(1, Number(process.env.SUBSCRIPTION_TRIAL_DAYS) || 15);
 
 function suscripcionesHabilitadas(): boolean {
   return process.env.VERCEL_ENV !== "production" || process.env.ENABLE_SUBSCRIPTIONS === "true";
+}
+
+function demoHabilitado(): boolean {
+  return process.env.VERCEL_ENV !== "production" && process.env.PAYMENTS_DEMO !== "false";
 }
 
 function getOrigin(req: any): string {
@@ -23,7 +30,7 @@ function getOrigin(req: any): string {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== "POST" && req.method !== "DELETE") {
+  if (req.method !== "POST" && req.method !== "DELETE" && req.method !== "PATCH") {
     return res.status(405).json({ error: "Método no permitido." });
   }
   if (!suscripcionesHabilitadas()) {
@@ -35,9 +42,6 @@ export default async function handler(req: any, res: any) {
   const mpToken = process.env.MP_ACCESS_TOKEN || "";
   if (!supabaseUrl || !serviceKey) {
     return res.status(500).json({ error: "Configuración de Supabase faltante en el servidor." });
-  }
-  if (!mpToken) {
-    return res.status(503).json({ error: "Los pagos todavía no están configurados." });
   }
   const supabase = createClient(supabaseUrl, serviceKey);
 
@@ -57,6 +61,29 @@ export default async function handler(req: any, res: any) {
     if (negocioError) return res.status(500).json({ error: "No se pudo verificar tu negocio." });
     if (!negocio) return res.status(403).json({ error: "Necesitás tener un negocio registrado." });
 
+    // ---------- [Demo] Simular el cobro del siguiente ciclo ----------
+    if (req.method === "PATCH") {
+      if (!demoHabilitado()) return res.status(403).json({ error: "El modo demo no está habilitado." });
+      const { data: susc } = await supabase
+        .from("suscripciones")
+        .select("id")
+        .eq("negocio_id", negocio.id)
+        .eq("estado", "autorizada")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (!susc) return res.status(404).json({ error: "No tenés una suscripción activa." });
+      const { data: aplicado, error: rpcError } = await supabase.rpc("aplicar_cobro_suscripcion", {
+        p_susc_id: susc.id,
+        p_mp_payment_id: `DEMO-PAY-${crypto.randomUUID()}`,
+      });
+      if (rpcError) {
+        console.error("Error simulando el cobro:", rpcError);
+        return res.status(500).json({ error: "No se pudo simular el cobro." });
+      }
+      return res.status(200).json({ ok: true, aplicado: !!aplicado });
+    }
+
     // ---------- Cancelar ----------
     if (req.method === "DELETE") {
       const { data: susc } = await supabase
@@ -69,7 +96,9 @@ export default async function handler(req: any, res: any) {
         .maybeSingle();
       if (!susc) return res.status(404).json({ error: "No tenés una suscripción para cancelar." });
 
-      if (susc.mp_preapproval_id) {
+      const esDemo = !!susc.mp_preapproval_id && String(susc.mp_preapproval_id).startsWith("DEMO-");
+      if (susc.mp_preapproval_id && !esDemo) {
+        if (!mpToken) return res.status(503).json({ error: "Los pagos todavía no están configurados." });
         const mpRes = await fetch(`https://api.mercadopago.com/preapproval/${encodeURIComponent(susc.mp_preapproval_id)}`, {
           method: "PUT",
           headers: { Authorization: `Bearer ${mpToken}`, "Content-Type": "application/json" },
@@ -86,6 +115,9 @@ export default async function handler(req: any, res: any) {
 
     // ---------- Suscribirse ----------
     const { planId, payerEmail } = req.body || {};
+    const demo = req.body?.demo === true;
+    if (demo && !demoHabilitado()) return res.status(403).json({ error: "El modo demo no está habilitado." });
+    if (!demo && !mpToken) return res.status(503).json({ error: "Los pagos todavía no están configurados." });
     if (typeof planId !== "string" || !planId) return res.status(400).json({ error: "Falta el plan." });
 
     const { data: plan } = await supabase.from("planes").select("*").eq("id", planId).eq("activo", true).maybeSingle();
@@ -109,8 +141,11 @@ export default async function handler(req: any, res: any) {
       .eq("negocio_id", negocio.id)
       .eq("estado", "pendiente");
 
-    const email = typeof payerEmail === "string" && payerEmail.trim() ? payerEmail.trim().toLowerCase() : String(user.email || "");
-    if (!EMAIL_RE.test(email)) return res.status(400).json({ error: "Ingresá un email válido para Mercado Pago." });
+    let email = "";
+    if (!demo) {
+      email = typeof payerEmail === "string" && payerEmail.trim() ? payerEmail.trim().toLowerCase() : String(user.email || "");
+      if (!EMAIL_RE.test(email)) return res.status(400).json({ error: "Ingresá un email válido para Mercado Pago." });
+    }
 
     const conTrial = !negocio.trial_usado;
     const { data: susc, error: suscError } = await supabase
@@ -129,6 +164,28 @@ export default async function handler(req: any, res: any) {
     if (suscError || !susc) {
       console.error("Error creando la suscripción:", suscError);
       return res.status(500).json({ error: "No se pudo iniciar la suscripción." });
+    }
+
+    // Demo: se autoriza al instante (con la misma función que usa el webhook real)
+    if (demo) {
+      await supabase.from("suscripciones").update({ mp_preapproval_id: `DEMO-${susc.id}` }).eq("id", susc.id);
+      const { error: activarError } = await supabase.rpc("activar_suscripcion", { p_susc_id: susc.id });
+      if (activarError) {
+        console.error("Error activando la suscripción demo:", activarError);
+        return res.status(500).json({ error: "No se pudo activar la suscripción de prueba." });
+      }
+      // Sin prueba gratuita (ya usada) el primer cobro es inmediato
+      if (!conTrial) {
+        const { error: cobroError } = await supabase.rpc("aplicar_cobro_suscripcion", {
+          p_susc_id: susc.id,
+          p_mp_payment_id: `DEMO-PAY-${crypto.randomUUID()}`,
+        });
+        if (cobroError) {
+          console.error("Error aplicando el primer cobro demo:", cobroError);
+          return res.status(500).json({ error: "No se pudo aplicar el primer cobro de prueba." });
+        }
+      }
+      return res.status(200).json({ demo: true, suscripcionId: susc.id, conTrial, trialDias: conTrial ? TRIAL_DIAS : 0 });
     }
 
     const origin = getOrigin(req);
