@@ -22,6 +22,7 @@ import LoginScreen from './components/LoginScreen';
 import AiChatbot from './components/AiChatbot';
 import AdminPanel from './components/AdminPanel';
 import VisitorRegisterPromptModal from './components/VisitorRegisterPromptModal';
+import CookieConsentBanner from './components/CookieConsentBanner';
 
 export default function App() {
   // Loading/Welcome state
@@ -966,6 +967,9 @@ export default function App() {
 
       {/* Persistent Interactive AI Chatbot */}
       {userRole && <AiChatbot shops={shops} offers={offers} />}
+
+      {/* Cookie consent banner */}
+      <CookieConsentBanner />
 
     </div>
   );
